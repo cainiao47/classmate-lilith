@@ -124,4 +124,3 @@ printf '%s  %s\n' "$archive_hash" "$(basename "$ARCHIVE")" > "$OUTPUT_ROOT/Class
 echo "Built: $APP"
 echo "Archive: $ARCHIVE"
 echo "SHA-256: $archive_hash"
-
