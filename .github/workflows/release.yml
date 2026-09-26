@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -156,10 +157,11 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && 'v0.15.1' || github.ref_name }}
         run: |
           gh release create "$TAG" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "Classmate Lilith ${TAG#v}" \
             --generate-notes \
-            --verify-tag
+            --target "$GITHUB_SHA"
+
