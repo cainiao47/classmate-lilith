@@ -69,6 +69,7 @@ build_number="$(echo "$version" | tr -cd '0-9')"
 [[ -n "$build_number" ]] || build_number="1"
 
 swiftc "$SOURCE_ROOT/launcher/macos/ClassmateLilithLauncher.swift" \
+  -parse-as-library \
   -target arm64-apple-macosx13.0 \
   -framework AppKit -framework Foundation \
   -o "$MACOS_DIR/Classmate Lilith"
@@ -123,3 +124,4 @@ printf '%s  %s\n' "$archive_hash" "$(basename "$ARCHIVE")" > "$OUTPUT_ROOT/Class
 echo "Built: $APP"
 echo "Archive: $ARCHIVE"
 echo "SHA-256: $archive_hash"
+
