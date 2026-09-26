@@ -1,0 +1,14 @@
+Classmate Lilith
+Version: 0.15.1
+Mode: Online transcription only
+
+Transcription providers:
+- Alibaba Cloud Bailian Qwen3-ASR Flash (default)
+- Tencent Cloud ASR
+- OpenAI GPT Transcribe
+
+Text processing providers:
+- DeepSeek (default)
+- OpenAI
+
+The base package includes Node.js and FFmpeg for the local workspace, audio normalization, and online-service chunking. It contains no local ASR engine, model, component catalog, or model downloader.

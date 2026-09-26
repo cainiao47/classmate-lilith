@@ -1,0 +1,27 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - if: runner.os == 'macOS'
+        run: swiftc -typecheck launcher/macos/ClassmateLilithLauncher.swift -target arm64-apple-macosx13.0 -framework AppKit -framework Foundation
+      - if: runner.os == 'macOS'
+        run: plutil -lint launcher/macos/Info.plist && bash -n distribution/build-macos-arm64.sh

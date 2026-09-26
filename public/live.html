@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>实时转写 · Classmate Lilith</title>
+  <link rel="icon" href="/favicon.ico?v=0.15.1" sizes="any">
+  <link rel="stylesheet" href="/styles.css?v=0.15.1">
+  <link rel="stylesheet" href="/live.css?v=0.15.1">
+</head>
+<body class="live-page">
+  <header class="topbar live-topbar">
+    <a class="brand" href="/" aria-label="返回 Classmate Lilith 工作台">
+      <span class="brand-mark" aria-hidden="true"><img src="/assets/lilith-app-icon.png" alt=""></span>
+      <span><strong>Classmate Lilith</strong><small>实时课堂转写</small></span>
+    </a>
+    <div class="top-actions">
+      <span id="liveHeaderStatus" class="live-header-status">等待开始</span>
+      <a class="header-button live-back-button" href="/">← 返回工作台</a>
+    </div>
+  </header>
+
+  <main class="live-shell">
+    <section class="live-control-card">
+      <div class="live-section-heading">
+        <span class="live-kicker">LIVE TRANSCRIPTION</span>
+        <h1>实时录音转写</h1>
+        <p>录音留在本机，语音流发送到所选在线服务。结束后可以单独导出，也可以进入人工修订。</p>
+      </div>
+
+      <div class="live-form-grid">
+        <label><span>在线识别服务</span><select id="liveProvider"><option value="alibaba">千问 Qwen3-ASR Realtime</option><option value="tencent">腾讯云实时 ASR</option><option value="openai">OpenAI Live Transcribe</option></select></label>
+        <label><span>语言</span><select id="liveLanguage"><option value="zh">中文为主</option><option value="auto">自动识别</option><option value="en">英文</option></select></label>
+        <label class="live-microphone-field"><span>麦克风</span><select id="liveMicrophone"><option value="">系统默认麦克风</option></select></label>
+        <label class="live-noise-toggle"><input id="liveNoiseReduction" type="checkbox" checked><span>启用浏览器降噪与自动增益</span></label>
+        <label class="live-wide-field"><span>课程主题</span><input id="liveTopic" type="text" placeholder="例如：农村社会学田野调查方法"></label>
+        <label class="live-wide-field"><span>术语与人名提示</span><textarea id="liveKeywords" rows="4" placeholder="每行一个术语；会作为实时识别提示和后续校订语境"></textarea></label>
+      </div>
+
+      <div class="live-meter-panel">
+        <div class="live-meter-copy"><span id="liveElapsed">00:00:00</span><small id="liveMeterHint">开始后会显示麦克风音量</small></div>
+        <div class="live-meter" aria-label="麦克风音量"><i id="liveMeterBar"></i></div>
+        <span id="liveConnectionState" class="live-connection-state idle">未连接</span>
+      </div>
+
+      <div class="live-record-actions">
+        <button id="liveStart" class="primary-button live-start" type="button">● 开始实时转写</button>
+        <button id="livePause" class="secondary-button" type="button" disabled>暂停录音</button>
+        <button id="liveStop" class="secondary-button live-stop" type="button" disabled>结束并整理</button>
+      </div>
+      <p class="live-privacy-note">第一次开始时浏览器会申请麦克风权限。API Key 不会发送给网页，始终由本机服务保存和使用。</p>
+    </section>
+
+    <section class="live-transcript-card">
+      <header class="live-transcript-head">
+        <div><span class="live-kicker">TRANSCRIPT</span><h2>实时转写稿</h2><p>浅色文字仍可能变化；进入“已确认片段”后即成为稳定结果。</p></div>
+        <span id="liveWordCount">0 字</span>
+      </header>
+
+      <div id="livePartial" class="live-partial" hidden><span>正在识别</span><p></p></div>
+      <div id="liveSegments" class="live-segments"><div class="live-empty">开始录音后，已确认的转写片段会依次出现在这里。</div></div>
+
+      <label class="live-final-editor">
+        <span>完整转写稿 <small>结束后可继续人工修改</small></span>
+        <textarea id="liveTranscript" rows="12" spellcheck="false" disabled placeholder="实时转写结果会汇总在这里"></textarea>
+      </label>
+
+      <div class="live-result-actions">
+        <div class="live-export-actions">
+          <button id="liveExportTxt" class="text-button" type="button" disabled>导出 TXT</button>
+          <button id="liveExportMd" class="text-button" type="button" disabled>导出 Markdown</button>
+          <button id="liveExportSrt" class="text-button" type="button" disabled>导出 SRT</button>
+          <button id="liveDownloadAudio" class="text-button" type="button" disabled>下载本机录音</button>
+        </div>
+        <div class="live-task-actions">
+          <button id="liveSaveTask" class="secondary-button" type="button" disabled>保存为历史任务</button>
+          <button id="liveSendToReview" class="primary-button" type="button" disabled>送入人工修订 →</button>
+        </div>
+      </div>
+      <p id="liveSaveState" class="live-save-state">尚未产生实时转写结果</p>
+    </section>
+  </main>
+  <div id="liveToast" class="toast" hidden></div>
+  <script type="module" src="/live.js?v=0.15.1"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+Third-party components
+======================
+
+The Windows and macOS packages include Node.js, FFmpeg, LAME (through FFmpeg), and the ws WebSocket library.
+
+Node.js: https://nodejs.org/
+FFmpeg: https://ffmpeg.org/
+Windows FFmpeg binary distribution: https://www.gyan.dev/ffmpeg/builds/
+LAME: https://lame.sourceforge.io/
+ws: https://github.com/websockets/ws (MIT License; see node_modules/ws/LICENSE)
+
+Node.js, the Windows FFmpeg archive, and the LAME archive are checksum-verified by
+the public release workflow. Gyan's Windows FFmpeg essentials build is GPLv3; the
+macOS workflow builds FFmpeg from its official version tag and LAME from published
+source. Exact version and source URLs are recorded in the workflow.
+Before broader redistribution, audit the exact binary builds and transitive dependency
+licenses. This inventory is traceability documentation, not legal advice.

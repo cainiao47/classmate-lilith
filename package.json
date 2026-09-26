@@ -1,0 +1,18 @@
+{
+  "name": "classmate-lilith",
+  "version": "0.15.1",
+  "private": true,
+  "type": "module",
+  "description": "An online classroom transcription, proofreading, and rewriting workbench.",
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node --check settings-store.mjs && node --check lib/account-status.mjs && node --check lib/app-paths.mjs && node --check lib/live-transcription.mjs && node --check lib/runtime-log.mjs && node --check lib/terminology-store.mjs && node --check transcription-worker.mjs && node --check public/app.js && node --check public/live.js && node --check public/modules/task-state.js && node --check public/modules/online-providers.js && node --check public/modules/terminology.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ws": "8.21.3"
+  }
+}

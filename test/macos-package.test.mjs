@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+const launcher = fs.readFileSync(new URL("../launcher/macos/ClassmateLilithLauncher.swift", import.meta.url), "utf8");
+const plist = fs.readFileSync(new URL("../launcher/macos/Info.plist", import.meta.url), "utf8");
+const build = fs.readFileSync(new URL("../distribution/build-macos-arm64.sh", import.meta.url), "utf8");
+const install = fs.readFileSync(new URL("../docs/MACOS_INSTALL.md", import.meta.url), "utf8");
+
+test("macOS launcher owns service lifecycle without embedding the web UI", () => {
+  assert.match(launcher, /NSStatusBar\.system\.statusItem/);
+  assert.match(launcher, /打开 Classmate Lilith/);
+  assert.match(launcher, /退出并停止服务/);
+  assert.match(launcher, /TRANSCRIPT_POLISHER_LAUNCH_TOKEN/);
+  assert.match(launcher, /CLASSMATE_DATA_DIR/);
+  assert.match(launcher, /CLASSMATE_LOG_DIR/);
+  assert.match(launcher, /NSWorkspace\.shared\.open\(workspaceURL\)/);
+});
+
+test("macOS app metadata describes an Apple Silicon menu-bar application", () => {
+  assert.match(plist, /<string>com\.classmatelilith\.app<\/string>/);
+  assert.match(plist, /<key>LSUIElement<\/key>\s*<true\/>/);
+  assert.match(plist, /<string>ClassmateLilith<\/string>/);
+  assert.doesNotMatch(plist, /NSMicrophoneUsageDescription/);
+});
+
+test("macOS packager keeps private data out and preserves bundle metadata", () => {
+  assert.match(build, /Classmate-Lilith-macOS-arm64\.zip/);
+  assert.match(build, /ditto -c -k --sequesterRsrc --keepParent/);
+  assert.match(build, /codesign --force --sign -/);
+  assert.match(build, /FFmpeg depends on libraries outside the app bundle/);
+  assert.match(build, /for forbidden in data logs engines models components downloads/);
+  assert.match(install, /隐私与安全性/);
+  assert.match(install, /仍要打开/);
+});
