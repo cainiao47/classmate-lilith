@@ -123,6 +123,7 @@ jobs:
               --extra-cflags="-arch arm64 -mmacosx-version-min=13.0 -I$prefix/include" \
               --extra-ldflags="-arch arm64 -mmacosx-version-min=13.0 -L$prefix/lib" \
               --pkg-config-flags=--static \
+              --disable-autodetect \
               --enable-static \
               --disable-shared \
               --enable-gpl \
