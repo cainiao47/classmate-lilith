@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
-import { buildTencentRealtimeUrl } from "../lib/live-transcription.mjs";
+import { ALIBABA_LIVE_MODELS, LIVE_AUDIO_BUFFER_MAX_BYTES, appendBoundedAudio, buildTencentRealtimeUrl } from "../lib/live-transcription.mjs";
 
 test("Tencent realtime URL signs every non-signature query parameter", () => {
   const secretKey = "secret-key";
@@ -21,4 +21,24 @@ test("Tencent realtime URL signs every non-signature query parameter", () => {
 
 test("Tencent realtime requires AppID in addition to the saved API credentials", () => {
   assert.throws(() => buildTencentRealtimeUrl({ tencentSecretId: "id", tencentSecretKey: "key" }), /AppID/);
+});
+
+test("Alibaba realtime exposes general and broad-dialect streaming models", () => {
+  assert.deepEqual([...ALIBABA_LIVE_MODELS], [
+    "qwen3-asr-flash-realtime",
+    "qwen-audio-3.1-asr-flash-streaming",
+    "qwen-audio-3.0-asr-flash-streaming",
+    "fun-asr-realtime"
+  ]);
+});
+
+test("an hour-long realtime stream keeps only the bounded reconnect window", () => {
+  const queue = [];
+  let bytes = 0;
+  const hundredMillisecondsOfPcm16 = Buffer.alloc(16_000 * 2 / 10);
+  for (let index = 0; index < 60 * 60 * 10; index += 1) {
+    bytes = appendBoundedAudio(queue, bytes, hundredMillisecondsOfPcm16);
+  }
+  assert.equal(bytes, LIVE_AUDIO_BUFFER_MAX_BYTES);
+  assert.equal(queue.length, 200);
 });

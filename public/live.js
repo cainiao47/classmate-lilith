@@ -2,7 +2,7 @@ import { ONLINE_TRANSCRIPTION_PROVIDERS, providerConfigured } from "./modules/on
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
-  provider: $("#liveProvider"), language: $("#liveLanguage"), microphone: $("#liveMicrophone"),
+  provider: $("#liveProvider"), model: $("#liveModel"), modelField: $("#liveModelField"), language: $("#liveLanguage"), microphone: $("#liveMicrophone"),
   noiseReduction: $("#liveNoiseReduction"), topic: $("#liveTopic"), keywords: $("#liveKeywords"),
   start: $("#liveStart"), pause: $("#livePause"), stop: $("#liveStop"), elapsed: $("#liveElapsed"),
   meterBar: $("#liveMeterBar"), connection: $("#liveConnectionState"), headerStatus: $("#liveHeaderStatus"),
@@ -131,6 +131,7 @@ function refreshProviderOptions() {
   }
   const preferred = settings?.asrProvider || "alibaba";
   elements.provider.value = elements.provider.querySelector(`option[value="${preferred}"]`) ? preferred : "alibaba";
+  elements.modelField.hidden = elements.provider.value !== "alibaba";
 }
 
 async function loadInitialData() {
@@ -241,6 +242,7 @@ async function beginCapture() {
   elements.pause.disabled = false;
   elements.stop.disabled = false;
   elements.provider.disabled = true;
+  elements.model.disabled = true;
   elements.language.disabled = true;
   elements.microphone.disabled = true;
   setConnection("正在转写", "ready");
@@ -270,7 +272,7 @@ async function startSession() {
       setConnection("连接在线服务…");
       const keywords = elements.keywords.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
       socket.send(JSON.stringify({
-        type: "start", provider: elements.provider.value, language: elements.language.value,
+        type: "start", provider: elements.provider.value, model: elements.model.value, language: elements.language.value,
         prompt: [elements.topic.value.trim(), keywords.join("，")].filter(Boolean).join("；"), keywords
       }));
       connectionTimer = setTimeout(() => {
@@ -287,7 +289,16 @@ async function startSession() {
       const message = JSON.parse(event.data);
       if (message.type === "ready") {
         sampleRate = Number(message.sampleRate) || 16000;
-        await beginCapture();
+        if (phase === "connecting") await beginCapture();
+        else if (["recording", "paused"].includes(phase)) {
+          setConnection(message.reconnected ? "已恢复转写" : "正在转写", "ready");
+          if (message.reconnected) toast(`实时转写已恢复${message.bufferedMs ? `，已补送约 ${(message.bufferedMs / 1000).toFixed(1)} 秒缓冲音频` : ""}。`);
+        }
+      } else if (message.type === "reconnecting") {
+        partials.clear();
+        renderPartial();
+        setConnection(`重连中 ${message.attempt}`, "error");
+        toast("在线识别暂时断开，正在自动重连；本机录音不会停止。", "error");
       } else if (message.type === "partial") {
         const previous = partials.get(message.id) || "";
         partials.set(message.id, message.append ? previous + message.text : message.text);
@@ -310,7 +321,10 @@ async function startSession() {
           stopAudioGraph();
           phase = "idle";
           elements.start.disabled = false;
-        } else if (["recording", "paused"].includes(phase)) stopSession({ providerError: true });
+        } else if (["recording", "paused"].includes(phase)) {
+          setConnection("识别暂不可用", "error");
+          toast(`${message.error || "实时识别暂不可用"} 本机录音仍在继续，可稍后结束并保存。`, "error");
+        }
       }
     };
     socket.onerror = () => {
@@ -379,6 +393,7 @@ function maybeFinish() {
   setConnection("转写完成", "ready");
   elements.start.disabled = false;
   elements.provider.disabled = false;
+  elements.model.disabled = false;
   elements.language.disabled = false;
   elements.microphone.disabled = false;
   elements.transcript.disabled = false;
@@ -477,6 +492,7 @@ async function sendToReview() {
 elements.start.onclick = startSession;
 elements.pause.onclick = togglePause;
 elements.stop.onclick = () => stopSession();
+elements.provider.onchange = () => { elements.modelField.hidden = elements.provider.value !== "alibaba"; };
 elements.transcript.oninput = () => { transcriptEdited = true; elements.wordCount.textContent = `${transcriptText().replace(/\s/g, "").length.toLocaleString()} 字 · 已人工编辑`; savedTaskId = ""; importedJob = null; };
 elements.exportTxt.onclick = () => download(`${transcriptText()}\n`, "txt");
 elements.exportMd.onclick = () => download(`# ${safeBaseName()}\n\n${transcriptText().replace(/\n/g, "\n\n")}\n`, "md", "text/markdown;charset=utf-8");

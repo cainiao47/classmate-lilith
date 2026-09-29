@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
   <title>Classmate Lilith · 课堂工作台</title>
-  <link rel="icon" href="/favicon.ico?v=0.15.1" sizes="any">
-  <link rel="stylesheet" href="/styles.css?v=0.15.1">
+  <link rel="icon" href="/favicon.ico?v=0.16.0" sizes="any">
+  <link rel="stylesheet" href="/styles.css?v=0.16.0">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -59,6 +59,7 @@
           <small id="audioFileMeta">支持常见音频与视频格式</small>
         </label>
         <label class="compact-field online-service-field"><span>在线转写服务</span><select id="transcriptionEngine"><option>正在读取设置…</option></select></label>
+        <label id="transcriptionModelField" class="compact-field transcription-model-field"><span>千问录音模型</span><select id="transcriptionModel"><option value="qwen3-asr-flash">Qwen3-ASR · 通用</option></select></label>
         <label class="compact-field"><span>语言</span><select id="transcriptionLanguage"><option value="zh">中文为主</option><option value="auto">自动识别</option><option value="en">英文</option></select></label>
         <button id="transcriptionSettingsButton" class="secondary-button transcription-settings-button" type="button">配置在线 API</button>
         <button id="transcribeButton" class="primary-button" type="button" disabled>开始转写</button>
@@ -325,6 +326,6 @@
   </section>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app.js?v=0.15.1" type="module"></script>
+  <script src="/app.js?v=0.16.0" type="module"></script>
 </body>
 </html>

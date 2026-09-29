@@ -5,7 +5,7 @@ import path from "node:path";
 import { writeJsonAtomic } from "./lib/json-file.mjs";
 import { mediaPaths, terminateProcessTree } from "./lib/platform.mjs";
 import { approximateSegments, buildSrt, cleanText } from "./lib/transcription-text.mjs";
-import { ONLINE_TRANSCRIPTION_PROVIDERS } from "./public/modules/online-providers.js";
+import { ONLINE_TRANSCRIPTION_PROVIDERS, isAlibabaFileModel } from "./public/modules/online-providers.js";
 
 const AUDIO_EXTENSIONS = new Set([".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".mp4", ".mkv", ".mov", ".avi", ".webm"]);
 const ONLINE_ENGINES = Object.fromEntries(ONLINE_TRANSCRIPTION_PROVIDERS.map((provider) => [provider.id, provider.name]));
@@ -89,6 +89,9 @@ export class TranscriptionManager {
     const job = {
       id, engine: engine.id, engineName: engine.name, sourcePath: resolvedSource,
       originalName: safeName(input.originalName || path.basename(resolvedSource)),
+      model: engine.id === "alibaba" && isAlibabaFileModel(input.model)
+        ? input.model
+        : (engine.id === "alibaba" && isAlibabaFileModel(apiSettings.alibabaModel) ? apiSettings.alibabaModel : (engine.id === "alibaba" ? "qwen3-asr-flash" : null)),
       language: ["zh", "en", "auto"].includes(input.language) ? input.language : "zh",
       prompt: String(input.prompt || "").slice(0, 4000), apiSettings,
       status: "queued", stage: "等待开始", progress: 0, logs: [],
@@ -143,7 +146,7 @@ export class TranscriptionManager {
 
   publicJob(job) {
     return {
-      id: job.id, engine: job.engine, engineName: job.engineName, originalName: job.originalName,
+      id: job.id, engine: job.engine, engineName: job.engineName, model: job.model || null, originalName: job.originalName,
       status: job.status, stage: job.stage, progress: job.progress,
       logs: job.logs.slice(-80), createdAt: job.createdAt, updatedAt: job.updatedAt,
       result: job.result, error: job.error
@@ -235,6 +238,7 @@ export class TranscriptionManager {
     job.status = "completed"; job.stage = "在线转写完成，等待人工检查"; job.progress = 100; job.updatedAt = new Date().toISOString();
     await writeJsonAtomic(path.join(job.jobDir, "result.json"), this.publicJob(job));
     await fs.rm(path.join(job.jobDir, "api-chunks"), { recursive: true, force: true });
+    await fs.unlink(path.join(job.jobDir, "checkpoint.json")).catch(() => {});
     await fs.unlink(job.sourcePath).catch(() => {});
   }
 
@@ -248,8 +252,10 @@ export class TranscriptionManager {
     await this.runProcess(job, p.ffmpeg, ["-hide_banner", "-loglevel", "warning", "-y", "-i", job.normalizedPath, "-ar", "16000", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "64k", "-f", "segment", "-segment_time", String(segmentSeconds), "-reset_timestamps", "1", pattern], path.dirname(p.ffmpeg), "正在切分在线转写音频", 10, 14);
     const chunks = (await fs.readdir(chunkDir)).filter((name) => /^chunk_\d+\.mp3$/.test(name)).sort().map((name) => path.join(chunkDir, name));
     if (!chunks.length) throw new Error("没有生成可上传的音频分片。");
-    if (job.engine === "alibaba" && job.prompt) {
-      this.log(job, "千问 Qwen3-ASR 的兼容接口不接受术语提示；本轮只发送音频，术语仍保留供后续校订使用。");
+    if (job.engine === "alibaba" && job.prompt && job.model?.startsWith("qwen-audio-")) {
+      this.log(job, "已将术语提示转换为千问录音模型的热词表。");
+    } else if (job.engine === "alibaba" && job.prompt) {
+      this.log(job, "当前千问录音模型不接收任务内术语热词；术语仍保留供后续校订使用。");
     }
     const texts = [];
     const segments = [];
@@ -257,16 +263,18 @@ export class TranscriptionManager {
       if (job.cancelled) return;
       job.stage = `在线识别：第 ${index + 1} / ${chunks.length} 段`;
       job.progress = 12 + Math.round(index / chunks.length * 84);
-      this.log(job, `正在调用${job.engineName}处理第 ${index + 1} / ${chunks.length} 段；失败不会自动重试。`);
-      let result;
-      if (job.engine === "openai") result = await this.transcribeOpenAI(job, chunks[index], index * segmentSeconds * 1000, segmentSeconds);
-      else if (job.engine === "alibaba") result = await this.transcribeAlibaba(job, chunks[index], index * segmentSeconds * 1000, segmentSeconds);
-      else result = await this.transcribeTencent(job, chunks[index], index * segmentSeconds * 1000);
+      this.log(job, `正在调用${job.engineName}处理第 ${index + 1} / ${chunks.length} 段。`);
+      const result = await this.withTransientRetry(job, async () => {
+        if (job.engine === "openai") return this.transcribeOpenAI(job, chunks[index], index * segmentSeconds * 1000, segmentSeconds);
+        if (job.engine === "alibaba") return this.transcribeAlibaba(job, chunks[index], index * segmentSeconds * 1000, segmentSeconds);
+        return this.transcribeTencent(job, chunks[index], index * segmentSeconds * 1000);
+      });
       const cleaned = cleanText(result.text);
       if (cleaned) texts.push(cleaned);
       segments.push(...result.segments);
-      job.result = { text: `${texts.join("\n\n")}\n`, srt: buildSrt(segments), engine: job.engine, sourceName: job.originalName, approximateTimestamps: job.engine === "alibaba", partial: index < chunks.length - 1 };
+      job.result = { text: `${texts.join("\n\n")}\n`, srt: buildSrt(segments), engine: job.engine, model: job.model || null, sourceName: job.originalName, approximateTimestamps: job.engine === "alibaba", partial: index < chunks.length - 1 };
       await writeJsonAtomic(path.join(job.jobDir, "partial-result.json"), job.result);
+      await writeJsonAtomic(path.join(job.jobDir, "checkpoint.json"), { completedChunks: index + 1, totalChunks: chunks.length, updatedAt: new Date().toISOString() });
     }
     job.result.partial = false;
     job.progress = 98;
@@ -295,16 +303,41 @@ export class TranscriptionManager {
   async transcribeAlibaba(job, audioPath, offsetMs, segmentSeconds) {
     const settings = job.apiSettings;
     const dataUri = `data:audio/mpeg;base64,${(await fs.readFile(audioPath)).toString("base64")}`;
+    const model = isAlibabaFileModel(job.model) ? job.model : "qwen3-asr-flash";
+    const messages = [{ role: "user", content: [{ type: "input_audio", input_audio: { data: dataUri } }] }];
+    let response;
+
+    if (model !== "qwen3-asr-flash") {
+      const parameters = { format: "mp3", sample_rate: 16000 };
+      if (job.language !== "auto") parameters.language_hints = [job.language];
+      if (model.startsWith("qwen-audio-")) {
+        const vocabulary = job.prompt.split(/[,，;；\r\n]+/).map((item) => item.trim()).filter(Boolean).slice(0, 1000);
+        if (vocabulary.length) parameters.vocabulary = Object.fromEntries(vocabulary.map((text) => [text, 5]));
+      }
+      if (model === "qwen-audio-3.1-asr-flash") parameters.keep_dialect = true;
+      response = await fetch("https://maas.qianwenaiapi.com/api/v1/services/aigc/multimodal-generation/generation", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${settings.alibabaApiKey}`, "Content-Type": "application/json", "X-DashScope-SSE": "disable" },
+        body: JSON.stringify({ model, input: { messages }, parameters }),
+        signal: job.abortController.signal
+      });
+      const body = await response.text();
+      if (!response.ok) throw this.apiError("千问 API 平台", response.status, body);
+      const payload = JSON.parse(body);
+      const text = String(payload?.output?.output?.sentence?.text || payload?.output?.text || "");
+      if (!text) throw this.apiError("千问 API 平台", response.status, body, "返回中没有识别结果");
+      return { text, segments: approximateSegments(text, offsetMs, segmentSeconds * 1000) };
+    }
+
     // Qwen3-ASR's OpenAI-compatible endpoint is a dedicated ASR task. It only
     // accepts the audio user message; a conventional system prompt is rejected
     // with InternalError.Algo.InvalidParameter. The glossary remains available
     // to OpenAI and Tencent, whose APIs support contextual hints.
-    const messages = [{ role: "user", content: [{ type: "input_audio", input_audio: { data: dataUri } }] }];
     const asrOptions = job.language === "auto" ? { enable_itn: true } : { language: job.language, enable_itn: true };
-    const response = await fetch(settings.alibabaEndpoint || "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions", {
+    response = await fetch(settings.alibabaEndpoint || "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${settings.alibabaApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: settings.alibabaModel || "qwen3-asr-flash", messages, stream: false, asr_options: asrOptions }),
+      body: JSON.stringify({ model, messages, stream: false, asr_options: asrOptions }),
       signal: job.abortController.signal
     });
     const body = await response.text();
@@ -370,6 +403,28 @@ export class TranscriptionManager {
     const error = new Error(`${provider} ${prefix}（HTTP ${status}）：${compact.slice(0, 800)}`);
     error.provider = provider; error.status = status; error.responseBody = compact;
     return error;
+  }
+
+  async withTransientRetry(job, operation, maxAttempts = 4) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      if (job.cancelled) throw job.abortController.signal.reason || new DOMException("Aborted", "AbortError");
+      try {
+        return await operation();
+      } catch (error) {
+        if (job.cancelled || error?.name === "AbortError") throw error;
+        const status = Number(error?.status || 0);
+        const transient = status === 408 || status === 409 || status === 425 || status === 429 || status >= 500 || error instanceof TypeError || ["ECONNRESET", "ETIMEDOUT", "EAI_AGAIN"].includes(error?.code);
+        if (!transient || attempt >= maxAttempts) throw error;
+        const delay = Math.min(8000, 750 * 2 ** (attempt - 1)) + crypto.randomInt(0, 300);
+        this.log(job, `第 ${attempt} 次调用遇到临时故障，${Math.round(delay / 100) / 10} 秒后自动重试。`);
+        await new Promise((resolve, reject) => {
+          const onAbort = () => { clearTimeout(timer); reject(job.abortController.signal.reason || new DOMException("Aborted", "AbortError")); };
+          const timer = setTimeout(() => { job.abortController.signal.removeEventListener("abort", onAbort); resolve(); }, delay);
+          job.abortController.signal.addEventListener("abort", onAbort, { once: true });
+        });
+      }
+    }
+    throw new Error("在线转写重试次数已用尽。");
   }
 
   runProcess(job, executable, args, cwd, stage, progressStart, progressEnd) {

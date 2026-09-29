@@ -40,3 +40,48 @@ test("realtime result becomes a durable transcription job with playable audio an
   assert.equal(removed.audioDeleted, true);
   await assert.rejects(fs.access(recording));
 });
+
+test("online transcription retries transient provider failures", async () => {
+  const manager = new TranscriptionManager({ appRoot: process.cwd(), dataDir: process.cwd() });
+  const job = { cancelled: false, logs: [], abortController: new AbortController() };
+  let attempts = 0;
+  const result = await manager.withTransientRetry(job, async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      const error = new Error("temporary outage");
+      error.status = 503;
+      throw error;
+    }
+    return { text: "恢复成功", segments: [] };
+  }, 2);
+  assert.equal(attempts, 2);
+  assert.equal(result.text, "恢复成功");
+  assert.match(job.logs.join("\n"), /自动重试/);
+});
+
+test("Alibaba file transcription sends the selected dialect model and glossary vocabulary", async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "lilith-alibaba-model-"));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const audioPath = path.join(root, "chunk.mp3");
+  await fs.writeFile(audioPath, Buffer.from("audio"));
+  const manager = new TranscriptionManager({ appRoot: root, dataDir: path.join(root, "data") });
+  const originalFetch = globalThis.fetch;
+  let request;
+  globalThis.fetch = async (url, options) => {
+    request = { url, options, body: JSON.parse(options.body) };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ output: { output: { sentence: { text: "方言识别结果" } } } }) };
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const result = await manager.transcribeAlibaba({
+    model: "qwen-audio-3.1-asr-flash", language: "zh", prompt: "梁漱溟，乡村建设",
+    apiSettings: { alibabaApiKey: "test-key" }, abortController: new AbortController()
+  }, audioPath, 1000, 60);
+
+  assert.equal(result.text, "方言识别结果");
+  assert.match(request.url, /multimodal-generation\/generation$/);
+  assert.equal(request.body.model, "qwen-audio-3.1-asr-flash");
+  assert.deepEqual(request.body.parameters.language_hints, ["zh"]);
+  assert.deepEqual(request.body.parameters.vocabulary, { "梁漱溟": 5, "乡村建设": 5 });
+  assert.equal(request.body.parameters.keep_dialect, true);
+});

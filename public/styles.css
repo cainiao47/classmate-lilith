@@ -400,7 +400,9 @@ input::placeholder, textarea::placeholder { color: #a5aaa2; }
 .settings-card > .context-group > .settings-group-heading { grid-column: 1 / -1; }
 .settings-group > .field { min-width: 0; margin: 0; }
 .settings-group > .field > span { margin-bottom: 6px; font-size: 10px; }
-.settings-group > .field textarea { min-height: 70px; max-height: 92px; }
+.settings-card > .context-group > .field input,
+.settings-card > .context-group > .field textarea { height: 70px; min-height: 70px; max-height: 70px; }
+.settings-card > .context-group > .field textarea { resize: none; }
 .settings-card > .privacy-note { grid-column: 1 / -1; padding: 8px 10px; }
 .workspace:has(.result-card:not(.empty)) .editor-card { grid-column: 1 / -1; min-height: auto; }
 .workspace:has(.result-card:not(.empty)) .source-editor { min-height: 250px; }

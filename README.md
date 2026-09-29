@@ -29,17 +29,20 @@ macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次�
 ## 主要功能
 
 - 录音/视频文件在线转写：千问 API 平台（默认）、腾讯云 ASR、OpenAI。
-- 实时录音转写：结果可单独导出，也可一键送入人工修订。
+- 实时录音转写：连接异常时保持本机录音、自动重连并补送短时缓冲，结果可单独导出或一键送入人工修订。
+- 千问实时模型可选 Qwen3-ASR、Qwen-Audio 3.0/3.1 与 Fun-ASR，覆盖更多中文方言场景。
 - 可恢复的人工修订、AI 校订、待确认复核与录音定位。
-- DeepSeek（默认）或 OpenAI 文本校订与书面化整理。
+- DeepSeek（默认）或 OpenAI 文本校订，以及“全文规划—分段改写—全文终审”的书面化整理。
 - 全局术语库、任务历史、运行日志与 TXT/Markdown/Word/SRT 导出。
 - API Key 只存放在本机，不提交到仓库。
 
-## 当前版本：0.15.1
+## 当前版本：0.16.0
 
-- 新增独立的实时录音转写页面，支持千问、腾讯云和 OpenAI 实时接口。
-- 实时结果可导出 TXT、Markdown、SRT 和本机录音，也可保存为历史任务或一键送入人工修订。
-- 麦克风采集、音频转换和服务适配层均使用跨平台 Web 标准与纯 JavaScript，为 macOS 共用同一套实现留出空间。
+- 实时转写加入连接心跳、详细关闭日志、自动重连和 20 秒有界音频缓冲；上游临时断线不再结束本机录音。
+- 新增 Qwen-Audio 3.0、Qwen-Audio 3.1 和 Fun-ASR 实时模型选项，兼顾更广方言覆盖、方言表达保留、热词和时间戳。
+- 书面化整理升级为全文结构规划、分段正式改写和全文文体终审，并校验输出长度以拦截意外摘要。
+- 在线文件转写对网络错误、限流和服务端故障自动退避重试，并保存分片检查点。
+- 取消校订或书面化整理时会同步终止服务端模型请求；失败响应文件自动保留 30 天、最多 100 份。
 
 ### 0.14.1
 
@@ -87,7 +90,7 @@ npm run check
 npm test
 ```
 
-持续集成会在 Windows 与 macOS 上执行语法检查和 56 项自动测试。正式版本由带版本标签的 GitHub Actions 构建：Node.js、Windows FFmpeg 和 LAME 下载包会核对上游 SHA-256，macOS FFmpeg 从官方版本标签构建，最终生成两个平台压缩包及 SHA-256 校验文件。
+持续集成会在 Windows 与 macOS 上执行语法检查和 64 项自动测试。正式版本由带版本标签的 GitHub Actions 构建：Node.js、Windows FFmpeg 和 LAME 下载包会核对上游 SHA-256，macOS FFmpeg 从官方版本标签构建，最终生成两个平台压缩包及 SHA-256 校验文件。
 
 构建说明见 [Windows 发布脚本](distribution/build-windows-base.ps1)、[macOS 发布脚本](distribution/build-macos-arm64.sh) 与 [macOS 验证清单](docs/MACOS_VALIDATION.md)。
 

@@ -29,6 +29,7 @@ test("history is a dedicated highlighted header action", () => {
 test("review settings keep the heading aligned with the compact balance card", () => {
   assert.match(css, /\.settings-card > \.section-title \{ grid-column: 1 \/ 3; grid-row: 1;/);
   assert.match(css, /\.settings-card > \.context-group > \.settings-group-heading \{ grid-column: 1 \/ -1; \}/);
+  assert.match(css, /\.settings-card > \.context-group > \.field input,[\s\S]*?\.field textarea \{ height: 70px; min-height: 70px; max-height: 70px; \}/);
 });
 
 test("proofreading mode sits beside the editor execution controls", () => {
@@ -85,8 +86,10 @@ test("runtime log is visible in the UI and explains the 20-file retention policy
 
 test("transcription UI is online-only and exposes API configuration directly", () => {
   assert.match(html, /id="transcriptionEngine"/);
+  assert.match(html, /id="transcriptionModel"/);
   assert.match(html, /id="transcriptionSettingsButton"/);
   assert.match(html, /在线转写服务/);
+  assert.match(html, /千问录音模型/);
   assert.doesNotMatch(html, /id="transcriptionMode"/);
   assert.doesNotMatch(html, /id="offlineComponents"/);
   assert.doesNotMatch(html, /id="transcriptionBatch"/);
@@ -98,7 +101,7 @@ test("Lilith branding replaces the unused empty result card", () => {
   assert.doesNotMatch(html, /id="emptyState"/);
   assert.doesNotMatch(html, /校订结果会出现在这里/);
   assert.match(html, /assets\/lilith-app-icon\.png/);
-  assert.match(html, /href="\/favicon\.ico\?v=0\.15\.1"/);
+  assert.match(html, /href="\/favicon\.ico\?v=0\.16\.0"/);
   assert.match(css, /lilith-web-background-v1\.png/);
   assert.match(css, /\.result-card\.empty \{ display: none; \}/);
   assert.match(css, /width: min\(1240px, calc\(100% - 360px\)\)/);
@@ -116,4 +119,7 @@ test("realtime transcription has a dedicated cross-platform workspace and handof
   assert.match(liveHtml, /id="liveSaveTask"/);
   assert.match(liveHtml, /id="liveSendToReview"/);
   assert.match(liveCss, /\.live-shell/);
+  assert.match(liveHtml, /qwen-audio-3\.0-asr-flash-streaming/);
+  assert.match(liveHtml, /qwen-audio-3\.1-asr-flash-streaming/);
+  assert.match(liveHtml, /fun-asr-realtime/);
 });

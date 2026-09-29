@@ -5,7 +5,7 @@ import { freshState, restoreTaskState } from "../public/modules/task-state.js";
 import { buildIssueContext } from "../public/modules/review-context.js";
 import { DEFAULT_SHORTCUTS, displayShortcut, isReservedShortcut, shortcutFromEvent } from "../public/modules/shortcuts.js";
 import { combineGlossary, createTerminologySnapshot, formatTerminologyPrompt } from "../public/modules/terminology.js";
-import { configuredProviderCount, preferredOnlineProvider, providerConfigured } from "../public/modules/online-providers.js";
+import { ALIBABA_FILE_MODELS, configuredProviderCount, isAlibabaFileModel, preferredOnlineProvider, providerConfigured } from "../public/modules/online-providers.js";
 
 const SRT = `1
 00:00:02,500 --> 00:00:05,000
@@ -35,7 +35,20 @@ test("restored tasks reset transient runtime state", () => {
 
 test("new and restored tasks use an online transcription provider", () => {
   assert.equal(freshState().transcriptionEngine, "alibaba");
+  assert.equal(freshState().transcriptionModel, "qwen3-asr-flash");
   assert.equal(restoreTaskState({ id: "legacy-task", transcriptionEngine: "whisper" }).transcriptionEngine, "alibaba");
+  assert.equal(restoreTaskState({ id: "legacy-task" }).transcriptionModel, "qwen3-asr-flash");
+});
+
+test("file transcription exposes the supported Alibaba dialect models", () => {
+  assert.deepEqual(ALIBABA_FILE_MODELS.map((model) => model.id), [
+    "qwen3-asr-flash",
+    "qwen-audio-3.0-asr-flash",
+    "qwen-audio-3.1-asr-flash",
+    "fun-asr-flash-2026-06-15"
+  ]);
+  assert.equal(isAlibabaFileModel("qwen-audio-3.0-asr-flash"), true);
+  assert.equal(isAlibabaFileModel("unknown-model"), false);
 });
 
 test("online provider readiness requires complete credentials", () => {

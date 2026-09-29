@@ -25,6 +25,7 @@ export function freshState() {
     transcriptionDraft: "",
     transcriptionMeta: null,
     transcriptionEngine: "alibaba",
+    transcriptionModel: "qwen3-asr-flash",
     terminologyGroupIds: [],
     terminologySnapshot: null,
     proseRunning: false,
@@ -54,6 +55,7 @@ export function restoreTaskState(task) {
     proseAbortController: null
   };
   if (!isOnlineTranscriptionProvider(restored.transcriptionEngine)) restored.transcriptionEngine = "alibaba";
+  if (typeof restored.transcriptionModel !== "string" || !restored.transcriptionModel) restored.transcriptionModel = "qwen3-asr-flash";
   if (restored.proseStatus === "running") restored.proseStatus = "paused";
   return restored;
 }

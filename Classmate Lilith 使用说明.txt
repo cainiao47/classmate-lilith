@@ -1,4 +1,4 @@
-Classmate Lilith 0.15.1（在线转写版）
+Classmate Lilith 0.16.0（在线转写版）
 
 一、启动
 双击“Classmate Lilith.exe”。程序会启动本机网页服务，并在任务栏通知区域保留退出入口。

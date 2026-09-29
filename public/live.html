@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
   <title>实时转写 · Classmate Lilith</title>
-  <link rel="icon" href="/favicon.ico?v=0.15.1" sizes="any">
-  <link rel="stylesheet" href="/styles.css?v=0.15.1">
-  <link rel="stylesheet" href="/live.css?v=0.15.1">
+  <link rel="icon" href="/favicon.ico?v=0.16.0" sizes="any">
+  <link rel="stylesheet" href="/styles.css?v=0.16.0">
+  <link rel="stylesheet" href="/live.css?v=0.16.0">
 </head>
 <body class="live-page">
   <header class="topbar live-topbar">
@@ -30,8 +30,9 @@
       </div>
 
       <div class="live-form-grid">
-        <label><span>在线识别服务</span><select id="liveProvider"><option value="alibaba">千问 Qwen3-ASR Realtime</option><option value="tencent">腾讯云实时 ASR</option><option value="openai">OpenAI Live Transcribe</option></select></label>
+        <label><span>在线识别服务</span><select id="liveProvider"><option value="alibaba">千问实时识别</option><option value="tencent">腾讯云实时 ASR</option><option value="openai">OpenAI Live Transcribe</option></select></label>
         <label><span>语言</span><select id="liveLanguage"><option value="zh">中文为主</option><option value="auto">自动识别</option><option value="en">英文</option></select></label>
+        <label class="live-wide-field" id="liveModelField"><span>千问实时模型</span><select id="liveModel"><option value="qwen3-asr-flash-realtime">Qwen3-ASR · 通用、多语种与常见方言</option><option value="qwen-audio-3.0-asr-flash-streaming">Qwen-Audio 3.0 · 中文方言覆盖最广</option><option value="qwen-audio-3.1-asr-flash-streaming">Qwen-Audio 3.1 · 新版、保留方言表达</option><option value="fun-asr-realtime">Fun-ASR · 广覆盖、热词与时间戳</option></select></label>
         <label class="live-microphone-field"><span>麦克风</span><select id="liveMicrophone"><option value="">系统默认麦克风</option></select></label>
         <label class="live-noise-toggle"><input id="liveNoiseReduction" type="checkbox" checked><span>启用浏览器降噪与自动增益</span></label>
         <label class="live-wide-field"><span>课程主题</span><input id="liveTopic" type="text" placeholder="例如：农村社会学田野调查方法"></label>
@@ -82,6 +83,6 @@
     </section>
   </main>
   <div id="liveToast" class="toast" hidden></div>
-  <script type="module" src="/live.js?v=0.15.1"></script>
+  <script type="module" src="/live.js?v=0.16.0"></script>
 </body>
 </html>
