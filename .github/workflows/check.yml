@@ -22,7 +22,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - if: runner.os == 'macOS'
-        run: swiftc -parse-as-library -typecheck launcher/macos/ClassmateLilithLauncher.swift -target arm64-apple-macosx13.0 -framework AppKit -framework Foundation
+        run: swiftc -parse-as-library -typecheck launcher/macos/ClassmateLilithLauncher.swift -target arm64-apple-macosx13.0 -framework AppKit -framework Foundation -framework WebKit
       - if: runner.os == 'macOS'
         run: plutil -lint launcher/macos/Info.plist && bash -n distribution/build-macos-arm64.sh
 

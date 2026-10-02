@@ -26,8 +26,8 @@
   <string>public.app-category.productivity</string>
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
-  <key>LSUIElement</key>
-  <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Classmate Lilith 需要使用麦克风进行课堂实时转写和本机录音。</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

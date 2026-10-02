@@ -71,7 +71,7 @@ build_number="$(echo "$version" | tr -cd '0-9')"
 swiftc "$SOURCE_ROOT/launcher/macos/ClassmateLilithLauncher.swift" \
   -parse-as-library \
   -target arm64-apple-macosx13.0 \
-  -framework AppKit -framework Foundation \
+  -framework AppKit -framework Foundation -framework WebKit \
   -o "$MACOS_DIR/Classmate Lilith"
 launcher_archs="$(lipo -archs "$MACOS_DIR/Classmate Lilith")"
 [[ " $launcher_archs " == *" arm64 "* ]] || { echo "Launcher does not contain an arm64 slice: $launcher_archs" >&2; exit 1; }
