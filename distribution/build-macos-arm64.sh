@@ -95,7 +95,7 @@ sips -z 1024 1024 "$SOURCE_ICON" --out "$ICONSET/icon_512x512@2x.png" >/dev/null
 iconutil -c icns "$ICONSET" -o "$RESOURCES/ClassmateLilith.icns"
 rm -rf "$ICONSET"
 
-for file in server.mjs settings-store.mjs transcription-worker.mjs package.json package-lock.json README.md PRIVACY.md THIRD_PARTY_NOTICES.txt WORKBENCH_INFO.txt; do
+for file in server.mjs settings-store.mjs transcription-worker.mjs package.json package-lock.json README.md PRIVACY.md LICENSE ASSETS_LICENSE.md THIRD_PARTY_NOTICES.txt WORKBENCH_INFO.txt; do
   cp "$SOURCE_ROOT/$file" "$APP_ROOT/$file"
 done
 cp -R "$SOURCE_ROOT/public" "$APP_ROOT/public"

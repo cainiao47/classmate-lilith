@@ -1,6 +1,7 @@
 data/
 logs/
 node_modules/
+launcher/.cache/
 .npm-cache/
 downloads/
 dist/

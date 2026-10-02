@@ -22,6 +22,9 @@ test("macOS launcher presents the workbench in a native app window", () => {
   assert.match(launcher, /runOpenPanelWith/);
   assert.match(launcher, /WKDownloadDelegate/);
   assert.match(launcher, /isTrustedLocalURL/);
+  assert.match(launcher, /titlebarAppearsTransparent = true/);
+  assert.match(launcher, /brandIcon/);
+  assert.match(launcher, /underWindowBackground/);
   assert.doesNotMatch(launcher, /NSWorkspace\.shared\.open\(workspaceURL\)/);
 });
 
@@ -39,6 +42,7 @@ test("macOS packager keeps private data out and preserves bundle metadata", () =
   assert.match(build, /-framework WebKit/);
   assert.match(build, /FFmpeg depends on libraries outside the app bundle/);
   assert.match(build, /for forbidden in data logs engines models components downloads/);
+  assert.match(build, /LICENSE ASSETS_LICENSE\.md THIRD_PARTY_NOTICES\.txt/);
   assert.match(install, /隐私与安全性/);
   assert.match(install, /仍要打开/);
 });

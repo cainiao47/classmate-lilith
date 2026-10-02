@@ -47,6 +47,15 @@ test("launcher bypasses proxy for localhost and can recover the workspace", () =
   assert.doesNotMatch(launcher, /\?open=/);
 });
 
+test("Windows launcher hosts the workspace in a dedicated WebView2 window", () => {
+  assert.match(launcher, /Microsoft\.Web\.WebView2\.WinForms/);
+  assert.match(launcher, /sealed class WorkspaceForm : Form/);
+  assert.match(launcher, /disable-background-timer-throttling/);
+  assert.match(launcher, /CoreWebView2PermissionKind\.Microphone/);
+  assert.match(launcher, /已缩到系统托盘/);
+  assert.match(launcher, /DwmCaptionColor/);
+});
+
 test("first review-efficiency batch exposes playback follow, navigation, and shortcut settings", () => {
   assert.match(html, /id="followPlayback"/);
   assert.match(html, /id="previousReview"/);
@@ -101,7 +110,7 @@ test("Lilith branding replaces the unused empty result card", () => {
   assert.doesNotMatch(html, /id="emptyState"/);
   assert.doesNotMatch(html, /校订结果会出现在这里/);
   assert.match(html, /assets\/lilith-app-icon\.png/);
-  assert.match(html, /href="\/favicon\.ico\?v=0\.16\.0"/);
+  assert.match(html, /href="\/favicon\.ico\?v=0\.18\.0"/);
   assert.match(css, /lilith-web-background-v1\.png/);
   assert.match(css, /\.result-card\.empty \{ display: none; \}/);
   assert.match(css, /width: min\(1240px, calc\(100% - 360px\)\)/);

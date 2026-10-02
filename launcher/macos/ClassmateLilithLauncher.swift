@@ -104,6 +104,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         mainWindow.setFrameAutosaveName("ClassmateLilithMainWindow")
         mainWindow.isReleasedWhenClosed = false
         mainWindow.delegate = self
+        mainWindow.titlebarAppearsTransparent = true
+        mainWindow.titlebarSeparatorStyle = .none
+        mainWindow.backgroundColor = NSColor(calibratedRed: 0.969, green: 0.941, blue: 0.898, alpha: 1)
+        mainWindow.isMovableByWindowBackground = true
         mainWindow.center()
 
         let root = NSView(frame: frame)
@@ -121,11 +125,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
         let visual = NSVisualEffectView(frame: root.bounds)
         visual.autoresizingMask = [.width, .height]
-        visual.material = .windowBackground
+        visual.material = .underWindowBackground
         visual.blendingMode = .behindWindow
         visual.state = .active
+        visual.wantsLayer = true
+        visual.layer?.backgroundColor = NSColor(calibratedRed: 0.969, green: 0.941, blue: 0.898, alpha: 0.9).cgColor
         statusContainer = visual
         root.addSubview(statusContainer)
+
+        let brandIcon = NSImageView()
+        brandIcon.image = NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+        brandIcon.imageScaling = .scaleProportionallyUpOrDown
+        brandIcon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            brandIcon.widthAnchor.constraint(equalToConstant: 82),
+            brandIcon.heightAnchor.constraint(equalToConstant: 82)
+        ])
 
         statusSpinner = NSProgressIndicator()
         statusSpinner.style = .spinning
@@ -133,11 +148,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
         statusTitle = NSTextField(labelWithString: "正在启动 Classmate Lilith")
         statusTitle.font = NSFont.systemFont(ofSize: 22, weight: .semibold)
+        statusTitle.textColor = NSColor(calibratedRed: 0.357, green: 0.224, blue: 0.157, alpha: 1)
         statusTitle.alignment = .center
 
         statusDetail = NSTextField(wrappingLabelWithString: "正在准备本地工作台，请稍候……")
         statusDetail.font = NSFont.systemFont(ofSize: 13)
-        statusDetail.textColor = .secondaryLabelColor
+        statusDetail.textColor = NSColor(calibratedRed: 0.475, green: 0.396, blue: 0.345, alpha: 1)
         statusDetail.alignment = .center
         statusDetail.maximumNumberOfLines = 4
         statusDetail.preferredMaxLayoutWidth = 560
@@ -155,7 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         buttons.alignment = .centerY
         buttons.spacing = 10
 
-        let stack = NSStackView(views: [statusSpinner, statusTitle, statusDetail, buttons])
+        let stack = NSStackView(views: [brandIcon, statusSpinner, statusTitle, statusDetail, buttons])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 14

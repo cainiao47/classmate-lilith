@@ -1,13 +1,17 @@
 Third-party components
 ======================
 
-The Windows and macOS packages include Node.js, FFmpeg, LAME (through FFmpeg), and the ws WebSocket library.
+The project's 0BSD and CC0 grants do not apply to the third-party components
+listed below. Each component remains subject to its own upstream license.
+
+The Windows and macOS packages include Node.js, FFmpeg, LAME (through FFmpeg), and the ws WebSocket library. The Windows package also includes the Microsoft Edge WebView2 SDK loader and .NET assemblies.
 
 Node.js: https://nodejs.org/
 FFmpeg: https://ffmpeg.org/
 Windows FFmpeg binary distribution: https://www.gyan.dev/ffmpeg/builds/
 LAME: https://lame.sourceforge.io/
 ws: https://github.com/websockets/ws (MIT License; see node_modules/ws/LICENSE)
+Microsoft Edge WebView2 SDK: https://www.nuget.org/packages/Microsoft.Web.WebView2 (see THIRD_PARTY_WebView2_LICENSE.txt in the Windows package)
 
 Node.js, the Windows FFmpeg archive, and the LAME archive are checksum-verified by
 the public release workflow. Gyan's Windows FFmpeg essentials build is GPLv3; the

@@ -28,6 +28,14 @@ Before release, test on a clean Apple Silicon Mac: first launch, menu-bar reopen
 
 Use `docs/MACOS_VALIDATION.md` as the release gate; do not publish a Mac preview merely because the bundle script completed.
 
-## License decision
+## Licensing
 
-Do not make the repository public until the project owner chooses a source-code license and the Node.js/FFmpeg notices have been audited.
+Original source code is released under the Zero-Clause BSD (`0BSD`) license.
+Original artwork and documentation are dedicated under CC0 1.0 Universal.
+Every release package must include `LICENSE`, `ASSETS_LICENSE.md`, and
+`THIRD_PARTY_NOTICES.txt`.
+
+These project licenses do not replace the licenses of Node.js, FFmpeg, LAME,
+`ws`, or other third-party components. Audit the exact bundled binaries and
+their corresponding source and notice obligations before every broader
+redistribution.

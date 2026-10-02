@@ -1,19 +1,20 @@
 # Classmate Lilith architecture
 
-Classmate Lilith has one online-only transcription workflow shared by Windows and a future macOS build.
+Classmate Lilith has one online-only transcription workflow shared by its Windows and macOS builds.
 
 ## Stable layers
 
 - `public/`: platform-neutral browser UI.
 - `server.mjs` and `lib/`: loopback HTTP service, persistence, online model APIs, exports, logs, and terminology.
 - `transcription-worker.mjs`: audio import, FFmpeg normalization/chunking, and online ASR adapters.
-- `launcher/`: Windows tray launcher and macOS AppKit menu-bar launcher. Both start the same service, open the loopback URL, and provide a visible quit action.
+- `launcher/`: Windows WinForms/WebView2 launcher and macOS AppKit/WKWebView launcher. Both start the same service, host the loopback workspace in a dedicated native window, retain a tray/menu-bar reopen action, and provide a visible full-quit action.
 
 ## Runtime layout
 
 - `runtime/node/`: platform Node runtime.
 - `runtime/ffmpeg/`: media preparation runtime required by online ASR.
 - Windows stores `data/` and `logs/` beside the executable to preserve the portable-folder workflow.
+- Windows uses the shared Evergreen WebView2 Runtime and falls back to the system browser when that runtime is unavailable. Only the small SDK bridge assemblies and loader are shipped in the portable ZIP.
 - macOS stores mutable data under `~/Library/Application Support/Classmate Lilith/data` and logs under `~/Library/Logs/Classmate Lilith`; a running app never modifies its `.app` bundle.
 - `CLASSMATE_DATA_DIR` and `CLASSMATE_LOG_DIR` allow a native launcher or test environment to override those defaults.
 
