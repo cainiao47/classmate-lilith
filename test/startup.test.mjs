@@ -6,6 +6,7 @@ import { webcrypto } from "node:crypto";
 import { freshState, restoreTaskState, TASK_SCHEMA_VERSION } from "../public/modules/task-state.js";
 import { DEFAULT_SHORTCUTS } from "../public/modules/shortcuts.js";
 import { ONLINE_TRANSCRIPTION_PROVIDERS, configuredProviderCount, preferredOnlineProvider, providerConfigured } from "../public/modules/online-providers.js";
+import { createSaveQueue } from "../public/modules/save-queue.js";
 
 test("page initialization binds history and all export buttons and loads online settings", async () => {
   const source = (await fs.readFile(new URL("../public/app.js", import.meta.url), "utf8")).replace(/^import .*;\r?\n/gm, "");
@@ -19,7 +20,7 @@ test("page initialization binds history and all export buttons and loads online 
   const context = vm.createContext({
     crypto: webcrypto, freshState, restoreTaskState, TASK_SCHEMA_VERSION, DEFAULT_SHORTCUTS,
     ONLINE_TRANSCRIPTION_PROVIDERS, configuredProviderCount, preferredOnlineProvider, providerConfigured,
-    combineGlossary: () => "", setTimeout: () => 1, clearTimeout() {},
+    combineGlossary: () => "", createSaveQueue, setTimeout: () => 1, clearTimeout() {},
     document: {
       querySelector(selector) {
         if (selector === "[data-prose-export]") return exports[0];

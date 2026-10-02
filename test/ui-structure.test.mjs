@@ -56,6 +56,13 @@ test("Windows launcher hosts the workspace in a dedicated WebView2 window", () =
   assert.match(launcher, /DwmCaptionColor/);
 });
 
+test("Windows launcher persists its shutdown credential without trusting a forgeable root header", () => {
+  assert.match(launcher, /LoadOrCreateToken\(baseDir\)/);
+  assert.match(launcher, /\.launcher-token/);
+  assert.match(launcher, /X-Launcher-Token/);
+  assert.doesNotMatch(launcher, /X-App-Root/);
+});
+
 test("first review-efficiency batch exposes playback follow, navigation, and shortcut settings", () => {
   assert.match(html, /id="followPlayback"/);
   assert.match(html, /id="previousReview"/);
@@ -110,7 +117,7 @@ test("Lilith branding replaces the unused empty result card", () => {
   assert.doesNotMatch(html, /id="emptyState"/);
   assert.doesNotMatch(html, /校订结果会出现在这里/);
   assert.match(html, /assets\/lilith-app-icon\.png/);
-  assert.match(html, /href="\/favicon\.ico\?v=0\.18\.0"/);
+  assert.match(html, /href="\/favicon\.ico\?v=0\.21\.0"/);
   assert.match(css, /lilith-web-background-v1\.png/);
   assert.match(css, /\.result-card\.empty \{ display: none; \}/);
   assert.match(css, /width: min\(1240px, calc\(100% - 360px\)\)/);

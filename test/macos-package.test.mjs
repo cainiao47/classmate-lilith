@@ -28,6 +28,14 @@ test("macOS launcher presents the workbench in a native app window", () => {
   assert.doesNotMatch(launcher, /NSWorkspace\.shared\.open\(workspaceURL\)/);
 });
 
+test("macOS launcher persists its shutdown credential and quits when the service actually stops", () => {
+  assert.match(launcher, /\.launcher-token/);
+  assert.match(launcher, /X-Launcher-Token/);
+  assert.match(launcher, /waitForServerToStop/);
+  assert.match(launcher, /finishQuit/);
+  assert.doesNotMatch(launcher, /X-App-Root/);
+});
+
 test("macOS app metadata describes an Apple Silicon windowed application", () => {
   assert.match(plist, /<string>com\.classmatelilith\.app<\/string>/);
   assert.doesNotMatch(plist, /<key>LSUIElement<\/key>\s*<true\/>/);

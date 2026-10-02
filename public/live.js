@@ -338,6 +338,9 @@ async function startSession() {
       if (["recording", "paused"].includes(phase)) {
         toast("实时服务连接已断开，本机录音正在收尾。", "error");
         stopSession({ providerError: true });
+      } else if (phase === "finalizing") {
+        phase = "done";
+        maybeFinish();
       }
     };
   } catch (error) {
@@ -432,15 +435,16 @@ async function ensureImportedJob() {
       language: elements.language.value, text: transcriptText(), durationMs: elapsedMs(), segments
     })
   });
-  importedJob = await importResponse.json();
-  if (!importResponse.ok) throw new Error(importedJob.error || "保存实时转写结果失败。");
+  const imported = await importResponse.json().catch(() => ({}));
+  if (!importResponse.ok) throw new Error(imported.error || "保存实时转写结果失败。");
+  if (!imported?.id) throw new Error("服务没有返回有效的实时转写任务编号。");
+  importedJob = imported;
   return importedJob;
 }
 
 async function createHistoryTask() {
-  if (savedTaskId) return savedTaskId;
   const job = await ensureImportedJob();
-  const id = `task-${crypto.randomUUID()}`;
+  const id = savedTaskId || `task-${crypto.randomUUID()}`;
   const text = transcriptText();
   const now = new Date().toISOString();
   const task = {
@@ -457,8 +461,11 @@ async function createHistoryTask() {
   const response = await fetch(`/api/tasks/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(task) });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "保存历史任务失败。");
+  const wasSaved = Boolean(savedTaskId);
   savedTaskId = id;
-  elements.saveState.textContent = "已保存为历史任务；录音会随任务一同保留。";
+  elements.saveState.textContent = wasSaved
+    ? "已更新历史任务；录音仍与此任务关联。"
+    : "已保存为历史任务；录音会随任务一同保留。";
   return id;
 }
 
@@ -492,15 +499,21 @@ async function sendToReview() {
 elements.start.onclick = startSession;
 elements.pause.onclick = togglePause;
 elements.stop.onclick = () => stopSession();
-elements.provider.onchange = () => { elements.modelField.hidden = elements.provider.value !== "alibaba"; };
-elements.transcript.oninput = () => { transcriptEdited = true; elements.wordCount.textContent = `${transcriptText().replace(/\s/g, "").length.toLocaleString()} 字 · 已人工编辑`; savedTaskId = ""; importedJob = null; };
+elements.provider.onchange = () => {
+  elements.modelField.hidden = elements.provider.value !== "alibaba";
+  setConnection(configuredForLive(elements.provider.value) ? "等待开始" : "需要配置", configuredForLive(elements.provider.value) ? "idle" : "error");
+};
+elements.transcript.oninput = () => {
+  transcriptEdited = true;
+  elements.wordCount.textContent = `${transcriptText().replace(/\s/g, "").length.toLocaleString()} 字 · 已人工编辑`;
+  if (savedTaskId) elements.saveState.textContent = "文稿已有修改，请再次保存以更新历史任务。";
+};
 elements.exportTxt.onclick = () => download(`${transcriptText()}\n`, "txt");
 elements.exportMd.onclick = () => download(`# ${safeBaseName()}\n\n${transcriptText().replace(/\n/g, "\n\n")}\n`, "md", "text/markdown;charset=utf-8");
 elements.exportSrt.onclick = () => download(srtText(), "srt");
 elements.downloadAudio.onclick = () => recordingBlob && download(recordingBlob, recordingExtension, recordingBlob.type);
 elements.saveTask.onclick = saveTask;
 elements.sendToReview.onclick = sendToReview;
-elements.provider.onchange = () => setConnection(configuredForLive(elements.provider.value) ? "等待开始" : "需要配置", configuredForLive(elements.provider.value) ? "idle" : "error");
 window.addEventListener("beforeunload", (event) => {
   if (recordingBlob?.size && !savedTaskId && phase === "done") { event.preventDefault(); event.returnValue = ""; }
 });

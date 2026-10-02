@@ -16,9 +16,51 @@
 html { min-height: 100%; background: #f2f3ee; }
 body {
   min-height: 100vh; margin: 0; color: var(--ink); overflow-x: hidden;
+  font-size: 17px;
   font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
   background: linear-gradient(145deg, #f7f6f1 0%, #edf1eb 60%, #f5f1eb 100%);
 }
+
+/* Slightly larger type for long classroom sessions without changing the layout hierarchy. */
+.brand strong { font-size: 21px; }
+.brand small, .header-button, .editor-footer, .review-item p, .history-drawer > p { font-size: 12px; }
+.local-badge, .section-title p, .field > span, .mode-picker legend, .mode-picker b,
+.text-button, .secondary-button, .progress-copy, .tab, .review-meta strong,
+.change-pair, .nothing, .toast, .history-item strong, .runtime-log-meta,
+.transcription-review header strong, .transcription-accept { font-size: 13px; }
+.section-title h2 { font-size: 18px; }
+.result-head h2 { font-size: 19px; }
+.history-drawer h2, .settings-dialog h2 { font-size: 22px; }
+.source-editor { font-size: 15px; }
+.compare-text, .corrected-text, .prose-text { font-size: 13px; }
+.transcription-review textarea { font-size: 14px; }
+.save-status, .help, .forget-key, .mode-picker small, .privacy-note,
+.account-status-copy span, .balance-query-button, .settings-group-heading strong,
+.editor-mode-heading strong, .editor-cost b, .progress-panel p, .eyebrow,
+.export-menu button, .tab span, .editable-note, .compare-grid header,
+.reopen-review, .review-option span, .review-option b, .apply-review, .mark-reviewed,
+.prose-intro small, .prose-mode select, .primary-button.compact,
+.prose-progress > div:first-child, .prose-empty small, .review-item blockquote,
+.delete-task, .version-heading strong, .settings-explain, .provider-grid input,
+.provider-grid select, .shortcut-toggle, .shortcut-copy strong,
+.terminology-list-head, .settings-dialog > footer span, .engine-status,
+.transcription-progress details, .settings-group > .field > span { font-size: 11px; }
+.account-status-copy small, .account-dashboard-link, .settings-group-heading small,
+.editor-mode-heading small, .editor-cost small, .usage-summary, .locate-original,
+.confidence, .review-progress small, .review-nav button, .prose-intro small,
+.prose-mode, .prose-progress small, .issue-context-row, .history-item small,
+.provider-grid label, .provider-save-state, .provider-inline-actions span,
+.account-settings-actions a, .shortcut-capture, .shortcut-clear, .shortcut-help,
+.terminology-empty, .term-group-chip, .add-term-library, .audio-picker > span,
+.compact-field > span, .audio-picker small, .transcription-progress pre,
+.transcription-review header small, .follow-playback, .transcription-review-footer small,
+.review-audio-dock small, .listen-audio, .related-issues { font-size: 10px; }
+.editor-mode-picker small, .version-heading small, .shortcut-copy small,
+.terminology-toolbar small, .task-terminology-head small,
+.transcription-segment.playing::after { font-size: 9px; }
+.live-entry-button, .audio-picker strong, .compact-field select,
+.review-audio-dock strong { font-size: 12px; }
+.transcription-segment { font-size: 11px; }
 body::before {
   content: ""; position: fixed; z-index: 0; inset: 0;
   pointer-events: none; opacity: .22;
@@ -270,6 +312,10 @@ input::placeholder, textarea::placeholder { color: #a5aaa2; }
 .history-item strong { font-size: 12px; }
 .history-item small { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; }
 .delete-task { border: 0; background: transparent; color: #a76b62; font-size: 10px; }
+.version-item header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.version-actions { display: flex; gap: 5px; }
+.version-action { border: 0; border-radius: 7px; padding: 4px 7px; background: var(--green-soft); color: var(--green-dark); font-size: 10px; }
+.version-action.danger { background: #f7e8e2; color: #9e5d50; }
 .version-heading { display: flex; justify-content: space-between; gap: 8px; margin: 20px 0 9px; padding-top: 14px; border-top: 1px solid var(--line); }
 .version-heading strong { color: var(--green-dark); font-size: 11px; }
 .version-heading small { color: var(--muted); font-size: 8px; }

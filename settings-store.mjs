@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { readJsonFile, writeJsonAtomic } from "./lib/json-file.mjs";
+import { validateEndpointUpdate } from "./lib/endpoint-policy.mjs";
 
 const SECRET_FIELDS = ["deepseekApiKey", "tencentSecretId", "tencentSecretKey", "alibabaApiKey", "openaiApiKey"];
 const ALLOW_EMPTY_FIELDS = ["shortcutTogglePlayback", "shortcutApplyCurrent", "shortcutNextReview", "shortcutPreviousReview", "shortcutRewindAudio", "shortcutForwardAudio"];
@@ -115,6 +116,7 @@ export class SettingsStore {
   }
 
   async save(update) {
+    await validateEndpointUpdate(update);
     const settings = await this.load();
     for (const key of Object.keys(DEFAULTS)) {
       if (!Object.hasOwn(update || {}, key)) continue;

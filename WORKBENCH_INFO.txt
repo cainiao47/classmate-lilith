@@ -1,5 +1,5 @@
 Classmate Lilith
-Version: 0.18.0
+Version: 0.21.0
 Mode: Online transcription only
 
 Transcription providers:

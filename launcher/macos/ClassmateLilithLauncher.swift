@@ -5,8 +5,7 @@ import WebKit
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private let workspaceURL = URL(string: "http://127.0.0.1:4178")!
-    private let healthURL = URL(string: "http://127.0.0.1:4178/api/health")!
-    private let launchToken = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    private lazy var launchToken = loadOrCreateLaunchToken()
     private var mainWindow: NSWindow!
     private var webView: WKWebView!
     private var statusContainer: NSView!
@@ -21,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var startupAttempts = 0
     private var healthCheckInFlight = false
     private var isQuitting = false
+    private var quitFinished = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -63,6 +63,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent("Logs", isDirectory: true)
             .appendingPathComponent("Classmate Lilith", isDirectory: true)
+    }
+
+    private var healthURL: URL {
+        var components = URLComponents(string: "http://127.0.0.1:4178/api/health")!
+        components.queryItems = [URLQueryItem(name: "root", value: appRoot.path)]
+        return components.url!
+    }
+
+    private func loadOrCreateLaunchToken() -> String {
+        let file = dataDirectory.appendingPathComponent(".launcher-token")
+        try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        if let existing = try? String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), existing.count >= 20 {
+            return existing
+        }
+        let created = UUID().uuidString.replacingOccurrences(of: "-", with: "") + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        try? created.write(to: file, atomically: true, encoding: .utf8)
+        return created
     }
 
     private func configureApplicationMenu() {
@@ -339,7 +356,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         session().dataTask(with: healthURL) { data, response, _ in
             let http = response as? HTTPURLResponse
             let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            let healthy = http?.statusCode == 200 && body.contains("\"app\":\"classmate-lilith\"")
+            let healthy = http?.statusCode == 200
+                && body.contains("\"app\":\"classmate-lilith\"")
+                && body.contains("\"matchesRoot\":true")
             DispatchQueue.main.async { completion(healthy) }
         }.resume()
     }
@@ -381,12 +400,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         request.httpMethod = "POST"
         request.setValue(launchToken, forHTTPHeaderField: "X-Launcher-Token")
         session().dataTask(with: request) { [weak self] _, _, _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { self?.finishQuit() }
+            DispatchQueue.main.async { self?.waitForServerToStop() }
         }.resume()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in self?.finishQuit() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.6) { [weak self] in self?.finishQuit() }
+    }
+
+    private func waitForServerToStop(attempt: Int = 0) {
+        checkServiceHealth { [weak self] healthy in
+            guard let self else { return }
+            if !healthy || attempt >= 25 {
+                self.finishQuit()
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.waitForServerToStop(attempt: attempt + 1) }
+            }
+        }
     }
 
     private func finishQuit() {
+        if quitFinished { return }
+        quitFinished = true
         if let process = serverProcess, process.isRunning { process.terminate() }
         NSApp.terminate(nil)
     }

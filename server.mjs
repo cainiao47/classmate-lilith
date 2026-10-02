@@ -11,8 +11,11 @@ import { createDocx } from "./lib/docx.mjs";
 import { RuntimeLog } from "./lib/runtime-log.mjs";
 import { queryAccountStatus } from "./lib/account-status.mjs";
 import { LiveTranscriptionGateway } from "./lib/live-transcription.mjs";
+import { createLoopbackSecurity } from "./lib/loopback-security.mjs";
 import { appStoragePaths } from "./lib/app-paths.mjs";
 import { pruneRecoveryFiles } from "./lib/recovery-retention.mjs";
+import { pruneOrphanedTranscriptions } from "./lib/transcription-retention.mjs";
+import { TaskStore, validTaskId } from "./lib/task-store.mjs";
 import {
   locateUncertainties,
   openAiOutputText,
@@ -34,6 +37,7 @@ const MAX_BODY_BYTES = 3 * 1024 * 1024;
 const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_BALANCE_URL = process.env.DEEPSEEK_BALANCE_URL || "https://api.deepseek.com/user/balance";
 const LAUNCH_TOKEN = process.env.TRANSCRIPT_POLISHER_LAUNCH_TOKEN || "";
+const loopbackSecurity = createLoopbackSecurity({ port: PORT });
 const { dataDir: DATA_DIR, logsDir: LOGS_DIR } = appStoragePaths(ROOT);
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const TERMINOLOGY_FILE = path.join(DATA_DIR, "terminology.json");
@@ -41,6 +45,8 @@ const TASKS_DIR = path.join(DATA_DIR, "tasks");
 const VERSIONS_DIR = path.join(DATA_DIR, "versions");
 const RECOVERY_DIR = path.join(DATA_DIR, "recovery");
 const runtimeLog = new RuntimeLog({ directory: LOGS_DIR, maxFiles: 20 });
+const normalizeRoot = (value) => process.platform === "win32" ? path.resolve(value).toLowerCase() : path.resolve(value);
+const matchesAppRoot = (value) => Boolean(value) && normalizeRoot(String(value)) === normalizeRoot(ROOT);
 await runtimeLog.initialize();
 runtimeLog.info("app", `正在启动 Classmate Lilith ${APP_VERSION}，根目录：${ROOT}`);
 const recoveryRetention = await pruneRecoveryFiles(RECOVERY_DIR).catch((error) => ({ error }));
@@ -48,6 +54,13 @@ if (recoveryRetention.error) runtimeLog.warn("recovery", `清理过期恢复文�
 else if (recoveryRetention.removed) runtimeLog.info("recovery", `已清理 ${recoveryRetention.removed} 个过期恢复文件`);
 const transcriptionManager = new TranscriptionManager({ appRoot: ROOT, dataDir: DATA_DIR, runtimeLogger: runtimeLog });
 await transcriptionManager.initialize();
+const taskStore = new TaskStore({ tasksDir: TASKS_DIR, versionsDir: VERSIONS_DIR, transcriptionManager });
+const transcriptionRetention = await pruneOrphanedTranscriptions({ dataDir: DATA_DIR, tasksDir: TASKS_DIR }).catch((error) => ({ error }));
+if (transcriptionRetention.error) runtimeLog.warn("transcription", `清理过期转写文件失败：${transcriptionRetention.error.message}`);
+else if (transcriptionRetention.skipped) runtimeLog.warn("transcription", `发现 ${transcriptionRetention.damagedTaskFiles} 个无法解析的历史任务；为保护录音，本次跳过自动清理`);
+else if (transcriptionRetention.jobsRemoved || transcriptionRetention.uploadsRemoved) {
+  runtimeLog.info("transcription", `已清理 ${transcriptionRetention.jobsRemoved} 个孤立任务目录和 ${transcriptionRetention.uploadsRemoved} 个孤立上传文件`);
+}
 const settingsStore = new SettingsStore({
   file: SETTINGS_FILE,
   legacyFile: path.join(ROOT, "config", "api-settings.json")
@@ -101,7 +114,7 @@ function buildSystemPrompt(mode) {
 5. changes 只列有意义的修改，纯标点修改可合并概述，最多 80 项。
 6. uncertainties 必须覆盖所有需要用户回听或核对的内容。confidence 只能为 low 或 medium。
 7. 只输出合法 JSON，不要输出解释文字。
-8. 如果输入包含 SRT/VTT 时间戳或说话人标签，必须原样保留这些标记，只校订正文。
+8. 如果输入包含 SRT/VTT 时间戳，必须原样保留时间标记，只校订正文。
 9. 术语提示只是辅助信息；正文中没有出现的术语不得凭空加入正文或 uncertainties。uncertainties 的 current_text 必须能在 corrected_text 中精确搜索到。
 
 JSON 格式：
@@ -156,7 +169,28 @@ async function requestModelJson({ provider = "deepseek", apiKey, endpoint, model
       signal: requestSignal,
       body: JSON.stringify(body)
     });
-    const payload = await response.json().catch(() => ({}));
+    const rawResponse = await response.text();
+    let payload;
+    try {
+      payload = JSON.parse(rawResponse);
+    } catch (cause) {
+      if (!response.ok) {
+        const error = new Error(`${isOpenAI ? "OpenAI" : "DeepSeek"} 请求失败（HTTP ${response.status}）：${rawResponse.slice(0, 800) || "响应为空"}`);
+        error.responseBody = rawResponse.slice(0, 20_000);
+        throw error;
+      }
+      const recoveryId = await saveFailedModelResponse({
+        model,
+        content: rawResponse,
+        usage: null,
+        finishReason: `http-${response.status}`,
+        message: `模型服务返回的顶层 JSON 无法解析：${cause.message}`
+      });
+      const error = new Error(`模型服务返回了无法解析的响应。为避免重复扣费，程序没有自动重试。${recoveryId ? ` 原始返回已保存在本机（${recoveryId}）。` : ""}`);
+      error.recoveryId = recoveryId;
+      error.charged = true;
+      throw error;
+    }
     if (!response.ok) {
       if (response.status === 429 && attempt < 3) {
         await wait(750 * attempt);
@@ -295,7 +329,7 @@ function buildRewritePrompt(mode) {
 2. 必须把口语短句、倒装句、半截句和跳跃表达改造成语法完整的书面句；删除“嗯、啊、然后就是说”等口头填充语和机械重复。
 3. 在原意明确时补足被口语省略的主语、宾语和指代对象，并使用准确的承接词呈现原文已有的转折、递进、因果、并列与举例关系；不得创造新的逻辑关系。
 4. “可能、或许、我认为、据说”等不确定程度必须原样保留，不得改写成确定事实。
-5. 所有【待确认】标记及其相邻内容必须原样保留，不得猜测或删除。
+5. 所有⟦存疑⟧标记及其相邻内容必须原样保留，不得猜测或删除。
 6. 人名、地名、书名、学派、译名、年代和数字沿用输入稿写法，不得自行纠正。
 7. 不要写“老师提到”“本段主要讲述”“我们可以看到”等空泛套话，不保留对听众的寒暄、课堂管理用语或无信息的互动语，直接形成可发表、可阅读的论述正文。
 8. 避免连续使用“然后、这个、那个、就是说、其实”等口语连接；段落应有明确中心句，后续句围绕该中心展开。
@@ -321,13 +355,13 @@ async function rewriteChunk({ config, background, glossary, mode, chunk, previou
 }
 
 async function planRewrite({ config, background, glossary, mode, text, signal }) {
-  const system = `你是中文长文编辑。先为课堂校订稿制定全文级书面化结构方案，不改写正文。识别中心议题、论证顺序、概念层次、例证归属，以及必须原样保留的数字、人名、年代、引文、限定语和【待确认】内容。不得补充原文之外的知识。只输出合法 JSON：{"outline":"简洁但具体的全文结构与衔接方案","protected_facts":["必须保留的信息"]}`;
+  const system = `你是中文长文编辑。先为课堂校订稿制定全文级书面化结构方案，不改写正文。识别中心议题、论证顺序、概念层次、例证归属，以及必须原样保留的数字、人名、年代、引文、限定语和⟦存疑⟧内容。不得补充原文之外的知识。只输出合法 JSON：{"outline":"简洁但具体的全文结构与衔接方案","protected_facts":["必须保留的信息"]}`;
   const user = `整理模式：${mode}\n课程背景：${background || "未提供"}\n术语提示：${glossary || "未提供"}\n\n<corrected_transcript>\n${text}\n</corrected_transcript>`;
   return requestModelJson({ ...config, messages: [{ role: "system", content: system }, { role: "user", content: user }], maxTokens: 8_000, parser: parseRewritePlanJson, signal });
 }
 
 async function finalizeRewrite({ config, mode, documentPlan, protectedFacts, text, signal }) {
-  const system = `你是中文书面稿终审编辑。对已经分段改写的全文做最后一次连贯性和文体统一：消除跨段机械重复，统一称谓与术语，修复段落之间的生硬跳转，使其成为正式、自然、可直接阅读的完整文章。不得摘要，不得删除任何实质观点、论据、例子、数字、限定语、推测语气或【待确认】内容，不得添加新事实。只输出合法 JSON：{"written_text":"终审后的完整全文"}`;
+  const system = `你是中文书面稿终审编辑。对已经分段改写的全文做最后一次连贯性和文体统一：消除跨段机械重复，统一称谓与术语，修复段落之间的生硬跳转，使其成为正式、自然、可直接阅读的完整文章。不得摘要，不得删除任何实质观点、论据、例子、数字、限定语、推测语气或⟦存疑⟧内容，不得添加新事实。只输出合法 JSON：{"written_text":"终审后的完整全文"}`;
   const user = `整理模式：${mode}\n全文结构方案：\n${documentPlan}\n必须保留的信息：\n${protectedFacts.join("\n") || "无额外条目"}\n\n<written_draft>\n${text}\n</written_draft>`;
   return requestModelJson({ ...config, messages: [{ role: "system", content: system }, { role: "user", content: user }], maxTokens: 64_000, parser: parseRewriteJson, signal });
 }
@@ -339,7 +373,7 @@ async function handleRewrite(req, res) {
   } catch (error) {
     return sendJson(res, 400, { error: error.message || "请求内容无效。" });
   }
-  const { textProvider, background = "", glossary = "", mode = "detailed", text, completedIndices = [], completedChunks = [] } = input;
+  const { textProvider, background = "", glossary = "", mode = "detailed", text, completedIndices = [], completedChunks = [], savedPlan = "", savedProtectedFacts = [] } = input;
   if (!new Set(["faithful", "detailed", "lecture"]).has(mode)) return sendJson(res, 400, { error: "请选择有效的论述稿整理强度。" });
   if (typeof text !== "string" || !text.trim()) return sendJson(res, 400, { error: "没有可整理的校订稿。" });
   let config;
@@ -361,13 +395,19 @@ async function handleRewrite(req, res) {
   emit({ type: "start", total: chunks.length, completed: [...completed] });
 
   let plan;
-  try {
-    emit({ type: "stage", stage: "正在规划全文结构与信息保留边界" });
-    plan = await planRewrite({ config, background: String(background).slice(0, 20_000), glossary: String(glossary).slice(0, 20_000), mode, text: String(text).slice(0, 120_000), signal: requestController.signal });
-    emit({ type: "plan", outline: plan.outline, usage: plan.usage || null });
-  } catch (error) {
-    emit({ type: "error", index: 0, total: chunks.length, error: error.message || "全文结构规划失败。", usage: error.usage || null, charged: Boolean(error.charged) });
-    return res.end();
+  const reusablePlan = String(savedPlan || "").trim();
+  if (reusablePlan) {
+    plan = { outline: reusablePlan.slice(0, 20_000), protected_facts: Array.isArray(savedProtectedFacts) ? savedProtectedFacts.map(String).slice(0, 500) : [] };
+    emit({ type: "plan", outline: plan.outline, protected_facts: plan.protected_facts, reused: true, usage: null });
+  } else {
+    try {
+      emit({ type: "stage", stage: "正在规划全文结构与信息保留边界" });
+      plan = await planRewrite({ config, background: String(background).slice(0, 20_000), glossary: String(glossary).slice(0, 20_000), mode, text: String(text).slice(0, 120_000), signal: requestController.signal });
+      emit({ type: "plan", outline: plan.outline, protected_facts: plan.protected_facts, reused: false, usage: plan.usage || null });
+    } catch (error) {
+      emit({ type: "error", index: 0, total: chunks.length, error: error.message || "全文结构规划失败。", usage: error.usage || null, charged: Boolean(error.charged) });
+      return res.end();
+    }
   }
 
   for (let index = 0; index < chunks.length; index += 1) {
@@ -403,75 +443,22 @@ async function handleRewrite(req, res) {
   res.end();
 }
 
-function validTaskId(value) {
-  return typeof value === "string" && /^[a-zA-Z0-9_-]{8,80}$/.test(value);
-}
-
-async function listTasks() {
-  await fs.mkdir(TASKS_DIR, { recursive: true });
-  const files = (await fs.readdir(TASKS_DIR)).filter((name) => name.endsWith(".json"));
-  const tasks = [];
-  for (const name of files) {
-    try {
-      const task = JSON.parse(await fs.readFile(path.join(TASKS_DIR, name), "utf8"));
-      tasks.push({ id: task.id, title: task.title || "未命名任务", updatedAt: task.updatedAt, status: task.status || "draft", sourceLength: task.sourceText?.length || task.transcriptionDraft?.length || 0 });
-    } catch { /* Ignore damaged history entries. */ }
-  }
-  return tasks.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))).slice(0, 50);
-}
-
-async function transcriptionReferencedByAnotherTask(jobId, excludingTaskId) {
-  if (!jobId) return false;
-  await fs.mkdir(TASKS_DIR, { recursive: true });
-  const files = (await fs.readdir(TASKS_DIR)).filter((name) => name.endsWith(".json") && name !== `${excludingTaskId}.json`);
-  for (const name of files) {
-    try {
-      const task = JSON.parse(await fs.readFile(path.join(TASKS_DIR, name), "utf8"));
-      if (task.transcriptionMeta?.jobId === jobId) return true;
-    } catch { /* Ignore damaged history entries. */ }
-  }
-  return false;
-}
-
 async function handleTasksApi(req, res, pathname) {
   try {
-    if (pathname === "/api/tasks" && req.method === "GET") return sendJson(res, 200, { tasks: await listTasks() });
+    if (pathname === "/api/tasks" && req.method === "GET") return sendJson(res, 200, { tasks: await taskStore.list() });
     const match = pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_-]+)$/);
     if (!match || !validTaskId(match[1])) return sendJson(res, 400, { error: "任务编号无效。" });
     const id = match[1];
-    const file = path.join(TASKS_DIR, `${id}.json`);
-    if (req.method === "GET") {
-      const task = JSON.parse(await fs.readFile(file, "utf8"));
-      return sendJson(res, 200, task);
-    }
+    if (req.method === "GET") return sendJson(res, 200, await taskStore.get(id));
     if (req.method === "POST") {
-      const task = await readJson(req);
-      task.id = id;
-      task.updatedAt = new Date().toISOString();
-      task.createdAt ||= task.updatedAt;
-      await fs.mkdir(TASKS_DIR, { recursive: true });
-      await writeJsonAtomic(file, task);
-      return sendJson(res, 200, { saved: true, updatedAt: task.updatedAt });
+      return sendJson(res, 200, await taskStore.save(id, await readJson(req)));
     }
     if (req.method === "DELETE") {
-      let task = null;
-      try { task = JSON.parse(await fs.readFile(file, "utf8")); } catch (error) { if (error.code !== "ENOENT") throw error; }
-      const jobId = task?.transcriptionMeta?.jobId;
-      let transcriptionDeleted = false;
-      let audioDeleted = false;
-      const audioRetainedShared = Boolean(jobId && await transcriptionReferencedByAnotherTask(jobId, id));
-      if (jobId && !audioRetainedShared) {
-        const removed = await transcriptionManager.remove(jobId);
-        transcriptionDeleted = removed.deleted;
-        audioDeleted = removed.audioDeleted;
-      }
-      await fs.unlink(file).catch((error) => { if (error.code !== "ENOENT") throw error; });
-      await fs.rm(path.join(VERSIONS_DIR, id), { recursive: true, force: true });
-      return sendJson(res, 200, { deleted: true, transcriptionDeleted, audioDeleted, audioRetainedShared });
+      return sendJson(res, 200, await taskStore.remove(id));
     }
     return sendJson(res, 405, { error: "Method not allowed" });
   } catch (error) {
-    const status = error.code === "ENOENT" ? 404 : 500;
+    const status = error.code === "ENOENT" ? 404 : (error.statusCode || 500);
     return sendJson(res, status, { error: status === 404 ? "没有找到该任务。" : (error.message || "任务保存失败。") });
   }
 }
@@ -482,38 +469,26 @@ async function handleVersionsApi(req, res, pathname) {
     const itemMatch = pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_-]+)\/versions\/(version-[a-zA-Z0-9_-]+)$/);
     const taskId = listMatch?.[1] || itemMatch?.[1];
     if (!validTaskId(taskId)) return sendJson(res, 400, { error: "任务编号无效。" });
-    const dir = path.join(VERSIONS_DIR, taskId);
     if (listMatch && req.method === "GET") {
-      await fs.mkdir(dir, { recursive: true });
-      const files = (await fs.readdir(dir)).filter((name) => /^version-[a-zA-Z0-9_-]+\.json$/.test(name));
-      const versions = [];
-      for (const name of files) {
-        try {
-          const snapshot = JSON.parse(await fs.readFile(path.join(dir, name), "utf8"));
-          versions.push({ id: snapshot.versionId, label: snapshot.versionLabel, stage: snapshot.versionStage, createdAt: snapshot.versionCreatedAt, sourceLength: snapshot.sourceText?.length || snapshot.transcriptionDraft?.length || 0 });
-        } catch { /* Ignore damaged snapshots. */ }
-      }
-      versions.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-      return sendJson(res, 200, { versions });
+      return sendJson(res, 200, { versions: await taskStore.listVersions(taskId) });
     }
     if (listMatch && req.method === "POST") {
-      const snapshot = await readJson(req);
-      const versionId = `version-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      snapshot.id = taskId;
-      snapshot.versionId = versionId;
-      snapshot.versionCreatedAt = new Date().toISOString();
-      snapshot.versionStage = String(snapshot.versionStage || "人工版本").slice(0, 40);
-      snapshot.versionLabel = String(snapshot.versionLabel || snapshot.versionStage).slice(0, 100);
-      await fs.mkdir(dir, { recursive: true });
-      await writeJsonAtomic(path.join(dir, `${versionId}.json`), snapshot);
-      return sendJson(res, 200, { saved: true, id: versionId, createdAt: snapshot.versionCreatedAt });
+      return sendJson(res, 200, await taskStore.createVersion(taskId, await readJson(req)));
     }
     if (itemMatch && req.method === "GET") {
-      return sendJson(res, 200, JSON.parse(await fs.readFile(path.join(dir, `${itemMatch[2]}.json`), "utf8")));
+      return sendJson(res, 200, await taskStore.getVersion(taskId, itemMatch[2]));
+    }
+    if (itemMatch && req.method === "PATCH") {
+      const input = await readJson(req);
+      const label = String(input.label || "").trim().slice(0, 100);
+      return sendJson(res, 200, await taskStore.renameVersion(taskId, itemMatch[2], label));
+    }
+    if (itemMatch && req.method === "DELETE") {
+      return sendJson(res, 200, await taskStore.removeVersion(taskId, itemMatch[2]));
     }
     return sendJson(res, 405, { error: "Method not allowed" });
   } catch (error) {
-    const status = error.code === "ENOENT" ? 404 : 500;
+    const status = error.code === "ENOENT" ? 404 : (error.statusCode || 500);
     return sendJson(res, status, { error: status === 404 ? "没有找到该版本。" : (error.message || "版本操作失败。") });
   }
 }
@@ -552,7 +527,7 @@ async function handleSettingsApi(req, res) {
     }
     return sendJson(res, 405, { error: "Method not allowed" });
   } catch (error) {
-    return sendJson(res, 500, { error: error.message || "保存设置失败。" });
+    return sendJson(res, error.statusCode || 500, { error: error.message || "保存设置失败。" });
   }
 }
 
@@ -644,7 +619,8 @@ async function serveStatic(req, res) {
     const content = await fs.readFile(filePath);
     res.writeHead(200, {
       "Content-Type": MIME[path.extname(filePath)] || "application/octet-stream",
-      "Cache-Control": "no-cache"
+      "Cache-Control": "no-cache",
+      "Set-Cookie": loopbackSecurity.cookieHeader
     });
     res.end(content);
   } catch {
@@ -663,11 +639,19 @@ const server = http.createServer(async (req, res) => {
       return originalEnd.apply(this, args);
     };
   }
-  if (req.method === "GET" && pathname === "/api/health") return sendJson(res, 200, { ok: true, app: "classmate-lilith", version: APP_VERSION, root: ROOT, launcherManaged: Boolean(LAUNCH_TOKEN) });
+  if (req.method === "GET" && pathname === "/api/health") {
+    const requestedRoot = url.searchParams.get("root");
+    const matchesRoot = requestedRoot ? matchesAppRoot(requestedRoot) : null;
+    return sendJson(res, 200, { ok: true, app: "classmate-lilith", version: APP_VERSION, root: ROOT, matchesRoot, launcherManaged: Boolean(LAUNCH_TOKEN) });
+  }
   if (req.method === "POST" && pathname === "/api/shutdown") {
-    if (!LAUNCH_TOKEN || req.headers["x-launcher-token"] !== LAUNCH_TOKEN) return sendJson(res, 403, { error: "Forbidden" });
+    const ownsToken = Boolean(LAUNCH_TOKEN) && req.headers["x-launcher-token"] === LAUNCH_TOKEN;
+    if (!ownsToken) return sendJson(res, 403, { error: "Forbidden" });
     sendJson(res, 200, { stopping: true });
     return setTimeout(() => stopServer("收到启动器退出请求"), 80);
+  }
+  if (pathname.startsWith("/api/") && !loopbackSecurity.authorizeApi(req)) {
+    return sendJson(res, 403, { error: "本机工作台会话无效，请从 Classmate Lilith 应用窗口重新打开。" });
   }
   if (req.method === "POST" && pathname === "/api/correct") return handleCorrect(req, res);
   if (req.method === "POST" && pathname === "/api/rewrite") return handleRewrite(req, res);
@@ -684,7 +668,11 @@ const server = http.createServer(async (req, res) => {
   sendJson(res, 405, { error: "Method not allowed" });
 });
 
-const liveTranscriptionGateway = new LiveTranscriptionGateway({ settingsStore, runtimeLogger: runtimeLog });
+const liveTranscriptionGateway = new LiveTranscriptionGateway({
+  settingsStore,
+  runtimeLogger: runtimeLog,
+  authorizeRequest: (req) => loopbackSecurity.authorizeWebSocket(req)
+});
 liveTranscriptionGateway.attach(server);
 
 server.listen(PORT, HOST, () => {
@@ -693,12 +681,14 @@ server.listen(PORT, HOST, () => {
 });
 
 let stopping = false;
-function stopServer(reason) {
+async function stopServer(reason) {
   if (stopping) return;
   stopping = true;
   runtimeLog.info("app", `${reason}，正在停止服务`);
-  const forcedExit = setTimeout(() => process.exit(0), 1600);
+  const forcedExit = setTimeout(() => process.exit(0), 4800);
   forcedExit.unref();
+  liveTranscriptionGateway.close();
+  await transcriptionManager.shutdown().catch((error) => runtimeLog.warn("app", `停止转写任务时出现异常：${error.message}`));
   server.close(() => process.exit(0));
 }
 

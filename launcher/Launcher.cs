@@ -400,7 +400,7 @@ namespace ClassmateLilithLauncher
     sealed class TrayContext : ApplicationContext
     {
         private readonly NotifyIcon tray;
-        private readonly string token = Guid.NewGuid().ToString("N");
+        private readonly string token;
         private readonly string baseDir;
         private readonly WorkspaceForm workspace;
         private readonly EventWaitHandle reopenSignal;
@@ -413,6 +413,7 @@ namespace ClassmateLilithLauncher
         internal TrayContext(string reopenEventName)
         {
             baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            token = LoadOrCreateToken(baseDir);
             workspace = new WorkspaceForm(baseDir);
             workspace.RetryRequested += delegate { BeginStartup(); };
             workspace.BrowserRequested += delegate { Program.OpenBrowser(); };
@@ -442,6 +443,25 @@ namespace ClassmateLilithLauncher
             startupTimer.Interval = 200;
             startupTimer.Tick += delegate { PollStartup(); };
             BeginStartup();
+        }
+
+        private static string LoadOrCreateToken(string root)
+        {
+            try
+            {
+                string directory = Path.Combine(root, "data");
+                string file = Path.Combine(directory, ".launcher-token");
+                Directory.CreateDirectory(directory);
+                if (File.Exists(file))
+                {
+                    string existing = File.ReadAllText(file, Encoding.UTF8).Trim();
+                    if (existing.Length >= 20) return existing;
+                }
+                string created = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+                File.WriteAllText(file, created, Encoding.UTF8);
+                return created;
+            }
+            catch { return Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"); }
         }
 
         private void BeginStartup()
@@ -527,7 +547,7 @@ namespace ClassmateLilithLauncher
         {
             try
             {
-                var request = (HttpWebRequest)WebRequest.Create(Program.Url + "/api/health");
+                var request = (HttpWebRequest)WebRequest.Create(Program.Url + "/api/health?root=" + Uri.EscapeDataString(baseDir));
                 request.Proxy = null;
                 request.Timeout = 350;
                 request.ReadWriteTimeout = 350;
@@ -535,7 +555,9 @@ namespace ClassmateLilithLauncher
                 using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
                 {
                     string body = reader.ReadToEnd();
-                    return response.StatusCode == HttpStatusCode.OK && body.Contains("\"app\":\"classmate-lilith\"");
+                    return response.StatusCode == HttpStatusCode.OK
+                        && body.Contains("\"app\":\"classmate-lilith\"")
+                        && body.Contains("\"matchesRoot\":true");
                 }
             }
             catch { return false; }
@@ -543,21 +565,7 @@ namespace ClassmateLilithLauncher
 
         private bool IsAppAvailable()
         {
-            if (IsHealthy()) return true;
-            try
-            {
-                var request = (HttpWebRequest)WebRequest.Create(Program.Url + "/");
-                request.Proxy = null;
-                request.Timeout = 450;
-                request.ReadWriteTimeout = 450;
-                using (var response = (HttpWebResponse)request.GetResponse())
-                using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
-                {
-                    string html = reader.ReadToEnd();
-                    return response.StatusCode == HttpStatusCode.OK && html.Contains("Classmate Lilith");
-                }
-            }
-            catch { return false; }
+            return IsHealthy();
         }
 
         private void OpenWorkspace()
@@ -589,7 +597,7 @@ namespace ClassmateLilithLauncher
             catch { }
             try
             {
-                if (serverProcess != null && !serverProcess.HasExited && !serverProcess.WaitForExit(1200)) serverProcess.Kill();
+                if (serverProcess != null && !serverProcess.HasExited && !serverProcess.WaitForExit(5200)) serverProcess.Kill();
             }
             catch { }
             workspace.PermitClose();

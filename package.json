@@ -1,13 +1,13 @@
 {
   "name": "classmate-lilith",
-  "version": "0.18.0",
+  "version": "0.21.0",
   "private": true,
   "type": "module",
   "description": "An online classroom transcription, proofreading, and rewriting workbench.",
   "license": "0BSD",
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node --check settings-store.mjs && node --check lib/account-status.mjs && node --check lib/app-paths.mjs && node --check lib/live-transcription.mjs && node --check lib/recovery-retention.mjs && node --check lib/runtime-log.mjs && node --check lib/terminology-store.mjs && node --check transcription-worker.mjs && node --check public/app.js && node --check public/live.js && node --check public/modules/task-state.js && node --check public/modules/online-providers.js && node --check public/modules/terminology.js",
+    "check": "node --check server.mjs && node --check settings-store.mjs && node --check lib/account-status.mjs && node --check lib/app-paths.mjs && node --check lib/endpoint-policy.mjs && node --check lib/live-transcription.mjs && node --check lib/loopback-security.mjs && node --check lib/recovery-retention.mjs && node --check lib/transcription-retention.mjs && node --check lib/task-store.mjs && node --check lib/runtime-log.mjs && node --check lib/terminology-store.mjs && node --check transcription-worker.mjs && node --check public/app.js && node --check public/live.js && node --check public/modules/ndjson-stream.js && node --check public/modules/save-queue.js && node --check public/modules/task-state.js && node --check public/modules/online-providers.js && node --check public/modules/terminology.js",
     "test": "node --test"
   },
   "engines": {
