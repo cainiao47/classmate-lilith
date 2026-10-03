@@ -453,6 +453,10 @@ async function handleTasksApi(req, res, pathname) {
     if (req.method === "POST") {
       return sendJson(res, 200, await taskStore.save(id, await readJson(req)));
     }
+    if (req.method === "PATCH") {
+      const input = await readJson(req);
+      return sendJson(res, 200, await taskStore.rename(id, input.title));
+    }
     if (req.method === "DELETE") {
       return sendJson(res, 200, await taskStore.remove(id));
     }

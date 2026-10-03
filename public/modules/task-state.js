@@ -5,6 +5,7 @@ export const TASK_SCHEMA_VERSION = 3;
 export function freshState() {
   return {
     taskId: `task-${crypto.randomUUID()}`,
+    projectTitle: "",
     running: false,
     abortController: null,
     failedIndex: null,
@@ -58,6 +59,7 @@ export function restoreTaskState(task) {
     proseAbortController: null
   };
   if (!isOnlineTranscriptionProvider(restored.transcriptionEngine)) restored.transcriptionEngine = "alibaba";
+  if (typeof restored.projectTitle !== "string") restored.projectTitle = "";
   if (typeof restored.transcriptionModel !== "string" || !restored.transcriptionModel) restored.transcriptionModel = "qwen3-asr-flash";
   if (restored.proseStatus === "running") restored.proseStatus = "paused";
   return restored;

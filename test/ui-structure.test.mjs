@@ -22,8 +22,25 @@ test("recording and review areas expose provider-aware account status queries", 
   assert.match(html, /<span class="step">3<\/span>\s*<div><h2>粘贴转写稿<\/h2>/);
 });
 
-test("history is a dedicated highlighted header action", () => {
-  assert.match(html, /id="historyButton" class="header-button history-action"/);
+test("project actions are grouped with history at the far right", () => {
+  assert.match(html, /id="apiSettingsButton" class="header-button settings-action"/);
+  assert.match(html, /class="project-actions"[\s\S]*?id="newTaskButton"[\s\S]*?id="saveVersionButton"[\s\S]*?id="historyButton"/);
+  assert.match(html, />新建工程<|>＋<\/span>新建工程/);
+  assert.match(html, />保存工程版本</);
+  assert.match(html, /工程历史/);
+  assert.doesNotMatch(html, /本地运行|local-badge/);
+  assert.match(css, /\.header-button\.settings-action/);
+  assert.match(css, /\.header-button\.save-project-action/);
+});
+
+test("history drawer exposes prominent project cards and a reusable naming dialog", () => {
+  assert.match(html, /id="historyDrawer"[\s\S]*?<h2>工程历史<\/h2>/);
+  assert.match(html, /当前工程的保存版本/);
+  assert.match(html, /id="nameDialog"/);
+  assert.match(html, /id="nameDialogInput"/);
+  assert.match(css, /\.project-history-item \{ min-height: 88px;/);
+  assert.match(css, /\.history-item \{[^}]*border: 1\.5px solid/);
+  assert.match(css, /\.item-action-menu/);
 });
 
 test("review settings keep the heading aligned with the compact balance card", () => {
@@ -117,7 +134,7 @@ test("Lilith branding replaces the unused empty result card", () => {
   assert.doesNotMatch(html, /id="emptyState"/);
   assert.doesNotMatch(html, /校订结果会出现在这里/);
   assert.match(html, /assets\/lilith-app-icon\.png/);
-  assert.match(html, /href="\/favicon\.ico\?v=0\.21\.0"/);
+  assert.match(html, /href="\/favicon\.ico\?v=0\.21\.1"/);
   assert.match(css, /lilith-web-background-v1\.png/);
   assert.match(css, /\.result-card\.empty \{ display: none; \}/);
   assert.match(css, /width: min\(1240px, calc\(100% - 360px\)\)/);

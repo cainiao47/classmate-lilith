@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="light">
   <title>Classmate Lilith · 课堂工作台</title>
-  <link rel="icon" href="/favicon.ico?v=0.21.0" sizes="any">
-  <link rel="stylesheet" href="/styles.css?v=0.21.0">
+  <link rel="icon" href="/favicon.ico?v=0.21.1" sizes="any">
+  <link rel="stylesheet" href="/styles.css?v=0.21.1">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -20,19 +20,22 @@
     </a>
     <div class="top-actions">
       <div class="top-statuses">
-        <span id="saveStatus" class="save-status">已自动保存</span>
-        <span class="local-badge"><i></i> 本地运行</span>
+        <span id="saveStatus" class="save-status">工程已自动保存</span>
       </div>
-      <button id="historyButton" class="header-button history-action" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h6l1.5 2H20v9.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6.5Z"/><path d="M8 13h8M8 16.5h5"/></svg>
-        历史记录
-      </button>
       <button id="runtimeLogButton" class="header-button utility-action" type="button">运行日志</button>
+      <button id="apiSettingsButton" class="header-button settings-action" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z"/><path d="m19.4 15 .1 2.2-2.3 2.3-2.2-.1-1.5 1.6h-3L9 19.4l-2.2.1-2.3-2.3.1-2.2L3 13.5v-3L4.6 9l-.1-2.2 2.3-2.3 2.2.1L10.5 3h3L15 4.6l2.2-.1 2.3 2.3-.1 2.2 1.6 1.5v3L19.4 15Z"/></svg>
+        设置
+      </button>
       <span class="top-action-divider" aria-hidden="true"></span>
-      <button id="apiSettingsButton" class="header-button utility-action" type="button">设置</button>
-      <button id="saveVersionButton" class="header-button primary-lite" type="button">保存当前版本</button>
-      <span class="top-action-divider" aria-hidden="true"></span>
-      <button id="newTaskButton" class="header-button new-task-action" type="button">新建任务</button>
+      <div class="project-actions" aria-label="工程操作">
+        <button id="newTaskButton" class="header-button project-action new-task-action" type="button"><span aria-hidden="true">＋</span>新建工程</button>
+        <button id="saveVersionButton" class="header-button project-action save-project-action" type="button" title="保存录音关联、转写稿、校订状态、书面稿和当前处理进度">保存工程版本</button>
+        <button id="historyButton" class="header-button project-action history-action" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h6l1.5 2H20v9.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6.5Z"/><path d="M8 13h8M8 16.5h5"/></svg>
+          工程历史 <span aria-hidden="true">›</span>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -266,13 +269,23 @@
   </main>
 
   <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
-  <aside id="historyDrawer" class="history-drawer" aria-label="任务历史" aria-hidden="true">
-    <header><div><span class="eyebrow">本机保存</span><h2>任务历史</h2></div><button id="closeHistory" class="icon-close" type="button">×</button></header>
-    <p>输入、结果和人工核对进度都会自动保存。API Key 单独存放，不会写入任务记录。</p>
+  <aside id="historyDrawer" class="history-drawer" aria-label="工程历史" aria-hidden="true">
+    <header><div><span class="eyebrow">本机工程</span><h2>工程历史</h2></div><button id="closeHistory" class="icon-close" type="button">×</button></header>
+    <p>工程会自动保存录音关联、原始转写、人工修改、校订进度和书面稿。API Key 与全局设置单独保存，不会写入工程。</p>
     <div id="historyList" class="history-list"></div>
-    <div class="version-heading"><strong>当前任务的人工版本</strong><small>恢复版本前会保留现有自动保存记录</small></div>
+    <div class="version-heading"><strong>当前工程的保存版本</strong><small>版本是完整工作状态的可恢复快照</small></div>
     <div id="versionList" class="history-list version-list"></div>
   </aside>
+
+  <div id="nameDialogBackdrop" class="drawer-backdrop" hidden></div>
+  <section id="nameDialog" class="name-dialog" role="dialog" aria-modal="true" aria-labelledby="nameDialogTitle" hidden>
+    <form id="nameDialogForm">
+      <header><div><span class="eyebrow">工程管理</span><h2 id="nameDialogTitle">命名</h2></div><button id="closeNameDialog" class="icon-close" type="button">×</button></header>
+      <p id="nameDialogDescription"></p>
+      <label class="name-dialog-field"><span>名称</span><input id="nameDialogInput" type="text" maxlength="100" autocomplete="off"></label>
+      <footer><button id="cancelNameDialog" class="secondary-button" type="button">取消</button><button id="confirmNameDialog" class="primary-button" type="submit">保存</button></footer>
+    </form>
+  </section>
 
   <div id="settingsBackdrop" class="drawer-backdrop" hidden></div>
   <section id="apiSettingsDialog" class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="apiSettingsTitle" hidden>
@@ -326,6 +339,6 @@
   </section>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app.js?v=0.21.0" type="module"></script>
+  <script src="/app.js?v=0.21.1" type="module"></script>
 </body>
 </html>

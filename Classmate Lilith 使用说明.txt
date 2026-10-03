@@ -1,4 +1,4 @@
-Classmate Lilith 0.21.0（在线转写版）
+Classmate Lilith 0.21.1（在线转写版）
 
 一、启动
 双击“Classmate Lilith.exe”。程序会启动本机服务并显示独立工作窗口；关闭窗口会缩到任务栏通知区域，通过托盘菜单可以重新显示或彻底退出。

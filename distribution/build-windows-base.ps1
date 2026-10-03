@@ -56,7 +56,7 @@ foreach ($relative in $forbidden) {
   if (Test-Path -LiteralPath (Join-Path $target $relative)) { throw "发布包包含不应出现的私人数据或旧组件：$relative" }
 }
 
-$manifest = @('# Classmate Lilith 0.21.0 Windows x64 online-only package', '')
+$manifest = @('# Classmate Lilith 0.21.1 Windows x64 online-only package', '')
 Get-ChildItem -LiteralPath $target -File -Recurse | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object FullName | ForEach-Object {
   $relative = $_.FullName.Substring($target.Length + 1)
   $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -69,7 +69,7 @@ $privateFiles = Get-ChildItem -LiteralPath $target -File -Recurse | Where-Object
 if ($privateFiles) { throw '隐私检查失败：发布包中出现了用户数据。' }
 
 [pscustomobject]@{
-  Version = '0.21.0'
+  Version = '0.21.1'
   Folder = $target
   Archive = $archive
   ArchiveMiB = [math]::Round((Get-Item -LiteralPath $archive).Length / 1MB, 1)
