@@ -23,9 +23,11 @@ Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线
 | --- | --- | --- |
 | Windows 10/11 x64 安装版 | `Classmate-Lilith-Setup-版本号.exe` | 安装向导、旧版数据导入、应用内检查与安装更新 |
 | Windows 10/11 x64 便携版 | `Classmate-Lilith-Windows-x64.zip` | 解压后双击 `Classmate Lilith.exe`，无需安装 |
-| macOS 13+ Apple Silicon | [v0.17.0 下载页](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.17.0) | 本轮保留现有版本，首次启动需手动放行 |
+| macOS 13+ Apple Silicon | [v0.21.1 下载页](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.21.1) | 本轮保留 GitHub 现有版本，首次启动需手动放行 |
 
 Windows 安装与覆盖升级详见 [Windows 安装说明](docs/WINDOWS_INSTALL.md)。安装版将用户数据独立保存，升级和卸载均保留数据；首次安装可以从旧便携版复制并校验数据。
+
+发布状态（2026-10-21 核对）：GitHub 最新正式版为 **v0.21.1**。上表 Windows 安装版属于尚未发布的 v0.22.0 开发计划，当前正式发布页尚无安装器。本地源码还需合并 GitHub 后续改动并重新验证；此前本机构建的 v0.18.0 安装包不是最新版，不应用于覆盖现有 v0.21.1。详见 [版本核对记录](docs/VERSION_AUDIT.md)。
 
 macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次运行时请按 [macOS 安装说明](docs/MACOS_INSTALL.md) 操作。Intel Mac 暂未提供预编译包。
 
@@ -40,12 +42,12 @@ macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次�
 - 全局术语库、任务历史、运行日志与 TXT/Markdown/Word/SRT 导出。
 - API Key 只存放在本机，不提交到仓库。
 
-## 当前 Windows 版本：0.18.0
+## Windows 开发版本：0.22.0（未发布）
 
 - 增加 EXE 安装向导、旧便携版数据迁移、快捷方式和卸载入口，安装版数据与程序分开保存。
 - 增加应用内更新检查、签名和完整性验证、确认安装、程序与元数据备份，以及安装失败时的程序恢复。
 - 新任务默认使用学术讲座整理稿，按主题成章、逐段原文核对，并改进 Markdown 与 Word 导出。
-- macOS 本轮不构建或更新，下载继续使用 v0.17.0。
+- macOS 本轮不构建或更新，下载继续使用 GitHub 已发布的 v0.21.1。
 
 ### 0.17.0
 

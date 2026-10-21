@@ -9,6 +9,8 @@ $source = Split-Path -Parent $PSScriptRoot
 $version = (Get-Content -LiteralPath (Join-Path $source 'package.json') -Raw | ConvertFrom-Json).version
 $package = [IO.Path]::GetFullPath($PackageRoot)
 $output = [IO.Path]::GetFullPath($OutputRoot)
+$packageVersion = (Get-Content -LiteralPath (Join-Path $package 'package.json') -Raw | ConvertFrom-Json).version
+if ($packageVersion -ne $version) { throw "便携包版本 $packageVersion 与源码版本 $version 不一致。请从当前源码重新构建便携包，不要仅重命名旧安装包。" }
 if (-not $InnoCompiler) {
   $candidates = @((Join-Path (Split-Path -Parent $source) 'tools\inno-setup\ISCC.exe'), (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'), (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe'))
   $InnoCompiler = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1

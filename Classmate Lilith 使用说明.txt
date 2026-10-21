@@ -1,4 +1,6 @@
-Classmate Lilith 0.18.0（Windows 安装版与便携版）
+Classmate Lilith 0.22.0（Windows 安装版与便携版，未发布开发版本）
+
+版本提示：2026-10-21 核对 GitHub 最新正式版为 0.21.1。本地版本号已纠正，但源码尚待合并 GitHub 后续改动；现有 0.18.0 安装包不可作为新版覆盖安装，也不能仅改名后发布。详见 docs/VERSION_AUDIT.md。
 
 一、启动
 双击“Classmate Lilith.exe”。程序会启动本机网页服务，并在任务栏通知区域保留退出入口。
