@@ -571,3 +571,10 @@ input::placeholder, textarea::placeholder { color: #ad9c88; }
 .listen-audio:hover { background: #e5cfb3; }
 .listen-audio:disabled { background: #eee3d4; color: #9f9180; }
 .related-issues { background: rgba(241, 228, 207, .86); color: #786550; }
+.windows-update-dialog { width: min(580px, calc(100vw - 40px)); padding: 26px; color: #48382c; background: #fff9ef; border: 1px solid #dfc8aa; border-radius: 16px; box-shadow: 0 20px 80px #35251544; }
+.windows-update-dialog::backdrop { background: #21180f77; }
+.windows-update-dialog [hidden] { display: none !important; }
+.windows-update-dialog h2 { margin-top: 0; }
+.windows-update-dialog p { line-height: 1.7; overflow-wrap: anywhere; }
+.windows-update-dialog a { color: #8a5733; }
+.update-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }

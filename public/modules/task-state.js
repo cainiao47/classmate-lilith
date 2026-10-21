@@ -1,6 +1,6 @@
 import { isOnlineTranscriptionProvider } from "./online-providers.js";
 
-export const TASK_SCHEMA_VERSION = 3;
+export const TASK_SCHEMA_VERSION = 4;
 
 export function freshState() {
   return {
@@ -31,7 +31,8 @@ export function freshState() {
     proseRunning: false,
     proseAbortController: null,
     proseStatus: "idle",
-    proseMode: "detailed",
+    proseMode: "academic",
+    proseLecturePlan: null,
     proseGeneratedMode: "",
     proseChunks: [],
     proseText: "",
@@ -56,6 +57,9 @@ export function restoreTaskState(task) {
   };
   if (!isOnlineTranscriptionProvider(restored.transcriptionEngine)) restored.transcriptionEngine = "alibaba";
   if (typeof restored.transcriptionModel !== "string" || !restored.transcriptionModel) restored.transcriptionModel = "qwen3-asr-flash";
+  // Existing tasks retain the earlier default; new tasks use the lecture style.
+  if (!task.proseMode) restored.proseMode = "detailed";
+  if (!["faithful", "detailed", "lecture", "academic"].includes(restored.proseMode)) restored.proseMode = "academic";
   if (restored.proseStatus === "running") restored.proseStatus = "paused";
   return restored;
 }

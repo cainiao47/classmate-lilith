@@ -10,6 +10,10 @@ Run `distribution/build-windows-base.ps1` with a trusted runtime seed. The outpu
 
 Before a GitHub Release, test online transcription separately with Alibaba, Tencent, and OpenAI, then test task deletion, logs, exports, and launcher shutdown. Code-sign the launcher when a certificate is available.
 
+For the installed edition, run `distribution/build-windows-installer.ps1` against the clean portable package. Use the existing update-signing private key; the matching public key is committed in `distribution/windows-update-public.pem`. The build writes the EXE, its SHA-256 file, and the signed `windows-update.json` manifest. Never generate a new key to replace a lost release key without a migration plan.
+
+`windows-release.yml` builds Windows only. It requires the `WINDOWS_UPDATE_PRIVATE_KEY` repository secret. A version tag must match `package.json`; workflow dispatch can build without publishing. Publish all generated installer assets together. The older dual-platform workflow is manual only, so a Windows release does not rebuild or republish macOS. See `WINDOWS_INSTALL.md` for installation and validation steps.
+
 ## macOS
 
 The first target is Apple Silicon. On a Mac with Xcode command-line tools, provide a trusted arm64 Node.js executable and a self-contained arm64 FFmpeg executable:

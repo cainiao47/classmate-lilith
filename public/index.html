@@ -28,6 +28,7 @@
         历史记录
       </button>
       <button id="runtimeLogButton" class="header-button utility-action" type="button">运行日志</button>
+      <button id="windowsUpdateButton" class="header-button utility-action" type="button" hidden>检查更新</button>
       <span class="top-action-divider" aria-hidden="true"></span>
       <button id="apiSettingsButton" class="header-button utility-action" type="button">设置</button>
       <button id="saveVersionButton" class="header-button primary-lite" type="button">保存当前版本</button>
@@ -226,11 +227,12 @@
         <div id="changesPanel" class="tab-panel"><div id="changesList" class="review-list"></div></div>
         <div id="prosePanel" class="tab-panel">
           <div class="prose-toolbar">
-            <div class="prose-intro"><strong>把校订稿整理成书面论述</strong><small>保留观点、例子和限定语，不做摘要，也不擅自补充知识。</small></div>
-            <label class="prose-mode">整理强度
+            <div class="prose-intro"><strong>把校订稿整理成书面论述</strong><small>按主题成章，保留观点、例证和限定条件；学术讲座模式会逐段对照原文核查。</small></div>
+            <label class="prose-mode">成稿形式
               <select id="proseMode">
+                <option value="academic" selected>学术讲座整理稿</option>
                 <option value="faithful">忠实书面化</option>
-                <option value="detailed" selected>详细论述稿</option>
+                <option value="detailed">详细论述稿</option>
                 <option value="lecture">章节化讲义</option>
               </select>
             </label>
@@ -252,18 +254,35 @@
             <small id="proseProgressHint">正在把口语表达改写为完整段落</small>
           </div>
           <div id="proseEmpty" class="prose-empty">
-            <strong>校订完成后，从这里生成详细论述稿</strong>
+            <strong>校订完成后，从这里生成书面整理稿</strong>
             <p>论述稿是独立版本，不会覆盖校订稿。建议先处理完“待确认”项目再生成。</p>
+            <p>学术讲座整理稿采用多级标题和完整段落，支持 Obsidian Markdown。仅保留原文明示的身份信息；核对与修订会增加耗时及模型用量。</p>
             <small id="proseCostEstimate">等待校订稿</small>
           </div>
           <div id="proseResult" class="prose-result" hidden>
             <div class="editable-note"><span><i></i>生成后可继续人工编辑</span><span id="proseUsage"></span></div>
-            <textarea id="proseText" class="prose-text" spellcheck="false" aria-label="可编辑的详细论述稿"></textarea>
+            <textarea id="proseText" class="prose-text" spellcheck="false" aria-label="可编辑的书面整理稿"></textarea>
           </div>
         </div>
       </div>
     </section>
   </main>
+
+  <dialog id="windowsUpdateDialog" class="windows-update-dialog" aria-labelledby="updateTitle">
+    <h2 id="updateTitle">Windows 软件更新</h2>
+    <p id="updateVersion"></p>
+    <p id="updateMessage" role="status">等待检查</p>
+    <p id="updateDownloadProgress" hidden></p>
+    <p id="updateBusy">更新会保留设置、术语库、任务和录音。</p>
+    <p id="updatePortable" hidden>当前为便携版。可从发布页面下载安装版，首次安装时选择旧版文件夹导入数据。</p>
+    <p><a id="updateReleaseLink" target="_blank" rel="noreferrer">查看版本说明和下载文件</a></p>
+    <div class="update-actions">
+      <button id="updateCheck" class="secondary-button" type="button">重新检查</button>
+      <button id="updateDownload" class="secondary-button" type="button" hidden>下载更新</button>
+      <button id="updateInstall" class="primary-button" type="button" hidden>保存并安装更新</button>
+      <button id="updateClose" class="text-button" type="button">关闭</button>
+    </div>
+  </dialog>
 
   <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
   <aside id="historyDrawer" class="history-drawer" aria-label="任务历史" aria-hidden="true">

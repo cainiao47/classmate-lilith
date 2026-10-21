@@ -21,8 +21,11 @@ Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线
 
 | 系统 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows 10/11 x64 | `Classmate-Lilith-Windows-x64.zip` | 解压后双击 `Classmate Lilith.exe`，无需安装 |
-| macOS 13+ Apple Silicon | `Classmate-Lilith-macOS-arm64.zip` | 适用于 M1/M2/M3/M4 等芯片，首次启动需手动放行 |
+| Windows 10/11 x64 安装版 | `Classmate-Lilith-Setup-版本号.exe` | 安装向导、旧版数据导入、应用内检查与安装更新 |
+| Windows 10/11 x64 便携版 | `Classmate-Lilith-Windows-x64.zip` | 解压后双击 `Classmate Lilith.exe`，无需安装 |
+| macOS 13+ Apple Silicon | [v0.17.0 下载页](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.17.0) | 本轮保留现有版本，首次启动需手动放行 |
+
+Windows 安装与覆盖升级详见 [Windows 安装说明](docs/WINDOWS_INSTALL.md)。安装版将用户数据独立保存，升级和卸载均保留数据；首次安装可以从旧便携版复制并校验数据。
 
 macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次运行时请按 [macOS 安装说明](docs/MACOS_INSTALL.md) 操作。Intel Mac 暂未提供预编译包。
 
@@ -33,10 +36,18 @@ macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次�
 - 千问实时模型可选 Qwen3-ASR、Qwen-Audio 3.0/3.1 与 Fun-ASR，覆盖更多中文方言场景。
 - 可恢复的人工修订、AI 校订、待确认复核与录音定位。
 - DeepSeek（默认）或 OpenAI 文本校订，以及“全文规划—分段改写—全文终审”的书面化整理。
+- 学术讲座整理稿：主题章节、完整书面段落、逐段原文核查与修订，支持 Obsidian Markdown 和带标题层级的 Word 导出，详见 [成稿说明](docs/ACADEMIC_LECTURE.md)。
 - 全局术语库、任务历史、运行日志与 TXT/Markdown/Word/SRT 导出。
 - API Key 只存放在本机，不提交到仓库。
 
-## 当前版本：0.17.0
+## 当前 Windows 版本：0.18.0
+
+- 增加 EXE 安装向导、旧便携版数据迁移、快捷方式和卸载入口，安装版数据与程序分开保存。
+- 增加应用内更新检查、签名和完整性验证、确认安装、程序与元数据备份，以及安装失败时的程序恢复。
+- 新任务默认使用学术讲座整理稿，按主题成章、逐段原文核对，并改进 Markdown 与 Word 导出。
+- macOS 本轮不构建或更新，下载继续使用 v0.17.0。
+
+### 0.17.0
 
 - macOS 改为带 Dock 图标的独立原生窗口，工作台直接在应用内显示，不再依赖外部浏览器。
 - 增加原生启动状态、错误重试、文件选择、导出保存和麦克风权限处理；菜单栏入口继续保留。
@@ -67,7 +78,7 @@ macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次�
 
 ## Windows 使用
 
-1. 双击 `Classmate Lilith.exe`。
+1. 安装版先运行 EXE 安装器，再从快捷方式启动；便携版双击 `Classmate Lilith.exe`。
 2. 在“设置”中选择在线转写服务并保存对应凭据。
 3. 选择录音或视频、语言和在线服务，然后开始转写。
 4. 人工修改原始转写稿，再送入校订。
@@ -96,7 +107,7 @@ npm run check
 npm test
 ```
 
-持续集成会在 Windows 与 macOS 上执行语法检查和 64 项自动测试。正式版本由带版本标签的 GitHub Actions 构建：Node.js、Windows FFmpeg 和 LAME 下载包会核对上游 SHA-256，macOS FFmpeg 从官方版本标签构建，最终生成两个平台压缩包及 SHA-256 校验文件。
+持续集成会在 Windows 与 macOS 上执行语法检查和自动测试。正式版本由带版本标签的 GitHub Actions 构建：Node.js、Windows FFmpeg 和 LAME 下载包会核对上游 SHA-256，macOS FFmpeg 从官方版本标签构建，最终生成两个平台压缩包及 SHA-256 校验文件。
 
 构建说明见 [Windows 发布脚本](distribution/build-windows-base.ps1)、[macOS 发布脚本](distribution/build-macos-arm64.sh) 与 [macOS 验证清单](docs/MACOS_VALIDATION.md)。
 

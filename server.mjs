@@ -13,6 +13,9 @@ import { queryAccountStatus } from "./lib/account-status.mjs";
 import { LiveTranscriptionGateway } from "./lib/live-transcription.mjs";
 import { appStoragePaths } from "./lib/app-paths.mjs";
 import { pruneRecoveryFiles } from "./lib/recovery-retention.mjs";
+import { runLectureRewrite } from "./lib/lecture-rewrite.mjs";
+import { WindowsUpdates } from "./lib/windows-updates.mjs";
+import { UpdateActivity } from "./lib/update-activity.mjs";
 import {
   locateUncertainties,
   openAiOutputText,
@@ -34,7 +37,7 @@ const MAX_BODY_BYTES = 3 * 1024 * 1024;
 const DEEPSEEK_API_URL = process.env.DEEPSEEK_API_URL || "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_BALANCE_URL = process.env.DEEPSEEK_BALANCE_URL || "https://api.deepseek.com/user/balance";
 const LAUNCH_TOKEN = process.env.TRANSCRIPT_POLISHER_LAUNCH_TOKEN || "";
-const { dataDir: DATA_DIR, logsDir: LOGS_DIR } = appStoragePaths(ROOT);
+const { dataDir: DATA_DIR, logsDir: LOGS_DIR, installed: INSTALLED } = appStoragePaths(ROOT);
 const SETTINGS_FILE = path.join(DATA_DIR, "settings.json");
 const TERMINOLOGY_FILE = path.join(DATA_DIR, "terminology.json");
 const TASKS_DIR = path.join(DATA_DIR, "tasks");
@@ -55,6 +58,15 @@ const settingsStore = new SettingsStore({
 await settingsStore.initialize();
 const terminologyStore = new TerminologyStore({ file: TERMINOLOGY_FILE });
 await terminologyStore.initialize();
+const updateActivity = new UpdateActivity();
+const windowsUpdates = new WindowsUpdates({ root: ROOT, dataDir: DATA_DIR, version: APP_VERSION, installed: INSTALLED,
+  busyReasons: () => {
+    const reasons = updateActivity.reasons();
+    if ([...transcriptionManager.jobs.values()].some(job => ["queued", "running"].includes(job.status))) reasons.push("文件转写正在进行");
+    if (liveTranscriptionGateway.wss.clients.size) reasons.push("实时转写连接尚未结束");
+    return reasons;
+  }
+});
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -134,14 +146,14 @@ async function resolveTextConfig(requestedProvider) {
   return { provider: "deepseek", apiKey: settings.deepseekApiKey, model: settings.deepseekTextModel, endpoint: settings.deepseekTextEndpoint || DEEPSEEK_API_URL };
 }
 
-async function requestModelJson({ provider = "deepseek", apiKey, endpoint, model, messages, maxTokens = 16_000, parser = parseModelJson, signal = null }) {
+async function requestModelJson({ provider = "deepseek", apiKey, endpoint, model, messages, maxTokens = 16_000, parser = parseModelJson, schema = null, signal = null }) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const isOpenAI = provider === "openai";
     const body = isOpenAI ? {
       model,
       instructions: messages.find((item) => item.role === "system")?.content || "",
       input: messages.filter((item) => item.role !== "system"),
-      text: { format: { type: "json_schema", name: parser === parseRewriteJson ? "written_transcript" : "corrected_transcript", strict: true, schema: openAiSchema(parser) } },
+      text: { format: { type: "json_schema", name: schema ? "lecture_result" : (parser === parseRewriteJson ? "written_transcript" : "corrected_transcript"), strict: true, schema: schema || openAiSchema(parser) } },
       max_output_tokens: maxTokens,
       store: false
     } : {
@@ -339,14 +351,13 @@ async function handleRewrite(req, res) {
   } catch (error) {
     return sendJson(res, 400, { error: error.message || "请求内容无效。" });
   }
-  const { textProvider, background = "", glossary = "", mode = "detailed", text, completedIndices = [], completedChunks = [] } = input;
-  if (!new Set(["faithful", "detailed", "lecture"]).has(mode)) return sendJson(res, 400, { error: "请选择有效的论述稿整理强度。" });
+  const { textProvider, background = "", glossary = "", mode = "academic", text, completedIndices = [], completedChunks = [] } = input;
+  if (!new Set(["faithful", "detailed", "lecture", "academic"]).has(mode)) return sendJson(res, 400, { error: "请选择有效的论述稿整理强度。" });
   if (typeof text !== "string" || !text.trim()) return sendJson(res, 400, { error: "没有可整理的校订稿。" });
   let config;
   try { config = await resolveTextConfig(textProvider); }
   catch (error) { return sendJson(res, 400, { error: error.message }); }
 
-  const chunks = splitTranscript(text, 7_000);
   const requestController = new AbortController();
   res.on("close", () => { if (!res.writableEnded) requestController.abort(); });
   res.writeHead(200, {
@@ -355,6 +366,20 @@ async function handleRewrite(req, res) {
     "X-Content-Type-Options": "nosniff"
   });
   const emit = (data) => res.write(`${JSON.stringify(data)}\n`);
+  if (mode === "academic") {
+    try {
+      await runLectureRewrite({
+        text, background: String(background).slice(0, 20_000), glossary: String(glossary).slice(0, 20_000),
+        title: String(input.title || "").slice(0, 200), config, request: requestModelJson, emit, signal: requestController.signal,
+        checkpoint: input.lecturePlan, completedChunks, completedIndices
+      });
+    } catch (error) {
+      if (!requestController.signal.aborted) emit({ type: "error", index: error.index || 0, error: error.message || "讲座整理失败。",
+        usage: error.usage || null, charged: Boolean(error.charged), recoveryId: error.recoveryId || null });
+    }
+    return res.end();
+  }
+  const chunks = splitTranscript(text, 7_000);
   const writtenChunks = Array.isArray(completedChunks) ? completedChunks.slice(0, chunks.length).map((item) => String(item || "")) : [];
   const completed = new Set((Array.isArray(completedIndices) ? completedIndices.map(Number) : [])
     .filter((index) => Number.isInteger(index) && index >= 0 && index < chunks.length && writtenChunks[index]?.trim()));
@@ -522,7 +547,7 @@ async function handleDocxExport(req, res) {
   try {
     const input = await readJson(req);
     if (typeof input.text !== "string" || !input.text.trim()) return sendJson(res, 400, { error: "没有可导出的校订稿。" });
-    const docx = createDocx(String(input.title || "课堂校订稿").slice(0, 100), input.text);
+    const docx = createDocx(String(input.title || "课堂校订稿").slice(0, 100), input.text, { markdown: input.format === "markdown" });
     res.writeHead(200, {
       "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "Content-Disposition": "attachment; filename=transcript.docx",
@@ -656,6 +681,30 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}`);
   const pathname = url.pathname;
   const startedAt = Date.now();
+  if (pathname.startsWith("/api/updates")) {
+    try {
+      if (req.method === "GET" && pathname === "/api/updates") return sendJson(res, 200, windowsUpdates.view());
+      if (req.method === "POST" && pathname === "/api/updates/check") return sendJson(res, 200, await windowsUpdates.check((await readJson(req)).force === true));
+      if (req.method === "POST" && pathname === "/api/updates/download") return sendJson(res, 202, await windowsUpdates.download());
+      if (req.method === "POST" && pathname === "/api/updates/install") {
+        const result = await windowsUpdates.apply({ launcherPid: Number(process.env.CLASSMATE_LAUNCHER_PID || 0) });
+        sendJson(res, 200, result);
+        return setTimeout(() => stopServer("准备安装 Windows 更新"), 250);
+      }
+      return sendJson(res, 404, { error: "更新操作不存在。" });
+    } catch (error) { return sendJson(res, 409, { error: error.message }); }
+  }
+  if (pathname === "/api/client-activity" && req.method === "POST") {
+    try { updateActivity.report(await readJson(req)); return sendJson(res, 200, { recorded: true, installing: windowsUpdates.installing }); }
+    catch (error) { return sendJson(res, 400, { error: error.message }); }
+  }
+  if (windowsUpdates.installing && req.method !== "GET") return sendJson(res, 409, { error: "正在准备更新，请等待程序重新启动。" });
+  if (req.method !== "GET" && pathname !== "/api/shutdown") {
+    updateActivity.requests++;
+    let released = false;
+    const release = () => { if (!released) { updateActivity.requests--; released = true; } };
+    res.once("finish", release); res.once("close", release);
+  }
   if (pathname !== "/api/logs/current") {
     const originalEnd = res.end;
     res.end = function (...args) {
@@ -685,6 +734,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 const liveTranscriptionGateway = new LiveTranscriptionGateway({ settingsStore, runtimeLogger: runtimeLog });
+server.installingUpdate = () => windowsUpdates.installing;
 liveTranscriptionGateway.attach(server);
 
 server.listen(PORT, HOST, () => {

@@ -1,0 +1,98 @@
+name: Windows installer release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the Windows release (otherwise keep build artifacts)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Download verified Windows runtimes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $download = Join-Path $env:RUNNER_TEMP 'lilith-downloads'
+          $seed = Join-Path $env:RUNNER_TEMP 'lilith-runtime'
+          New-Item -ItemType Directory -Force -Path $download, (Join-Path $seed 'runtime\node'), (Join-Path $seed 'runtime\ffmpeg') | Out-Null
+          $nodeVersion = '22.23.3'
+          $nodeArchive = "node-v$nodeVersion-win-x64.zip"
+          $nodeBase = "https://nodejs.org/dist/v$nodeVersion"
+          Invoke-WebRequest "$nodeBase/$nodeArchive" -OutFile (Join-Path $download $nodeArchive)
+          Invoke-WebRequest "$nodeBase/SHASUMS256.txt" -OutFile (Join-Path $download 'node-SHASUMS256.txt')
+          $expected = ((Select-String -LiteralPath (Join-Path $download 'node-SHASUMS256.txt') -Pattern "  $([regex]::Escape($nodeArchive))$").Line -split '\s+')[0]
+          if ((Get-FileHash -LiteralPath (Join-Path $download $nodeArchive) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Node checksum verification failed' }
+          Expand-Archive -LiteralPath (Join-Path $download $nodeArchive) -DestinationPath (Join-Path $download 'node')
+          Copy-Item -Path (Join-Path $download "node\node-v$nodeVersion-win-x64\*") -Destination (Join-Path $seed 'runtime\node') -Recurse
+          $ffmpeg = Join-Path $download 'ffmpeg.zip'
+          Invoke-WebRequest 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip' -OutFile $ffmpeg
+          Invoke-WebRequest 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256' -OutFile "$ffmpeg.sha256"
+          $expected = ((Get-Content -LiteralPath "$ffmpeg.sha256" -Raw).Trim() -split '\s+')[0].ToLowerInvariant()
+          if ((Get-FileHash -LiteralPath $ffmpeg -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'FFmpeg checksum verification failed' }
+          Expand-Archive -LiteralPath $ffmpeg -DestinationPath (Join-Path $download 'ffmpeg')
+          $exe = Get-ChildItem -LiteralPath (Join-Path $download 'ffmpeg') -Filter ffmpeg.exe -File -Recurse | Select-Object -First 1
+          Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $seed 'runtime\ffmpeg\ffmpeg.exe')
+          "CLASSMATE_RUNTIME_SEED=$seed" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Prepare Inno Setup compiler
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod 'https://api.github.com/repos/jrsoftware/issrc/releases/tags/is-7_1_0'
+          $asset = $release.assets | Where-Object name -eq 'innosetup-7.1.0-x64.exe'
+          if (-not $asset) { throw 'Official Inno Setup compiler not found.' }
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
+          Invoke-WebRequest $asset.browser_download_url -OutFile $installer
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Pyrsys') { throw 'Inno Setup signature verification failed.' }
+          $tool = Join-Path $env:RUNNER_TEMP 'inno-setup'
+          $process = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',('/DIR="'+$tool+'"')) -WindowStyle Hidden -PassThru -Wait
+          if ($process.ExitCode -ne 0) { throw 'Inno Setup compiler installation failed.' }
+          "INNO_COMPILER=$tool\ISCC.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Build portable package and EXE installer
+        shell: pwsh
+        env:
+          WINDOWS_UPDATE_PRIVATE_KEY: ${{ secrets.WINDOWS_UPDATE_PRIVATE_KEY }}
+        run: |
+          if (-not $env:WINDOWS_UPDATE_PRIVATE_KEY) { throw 'Configure the WINDOWS_UPDATE_PRIVATE_KEY release secret to match distribution/windows-update-public.pem.' }
+          .\distribution\build-windows-base.ps1 -RuntimeSeed $env:CLASSMATE_RUNTIME_SEED
+          .\distribution\build-windows-installer.ps1 -PackageRoot (Join-Path $PWD 'dist\Classmate-Lilith-Windows-x64') -InnoCompiler $env:INNO_COMPILER
+      - name: Verify installation, in-place upgrade and retained user data
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          .\distribution\test-windows-installer.ps1 -Installer (Join-Path $PWD "dist\Classmate-Lilith-Setup-$version.exe")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            dist/Classmate-Lilith-Setup-*.exe
+            dist/Classmate-Lilith-Setup-*.exe.sha256
+            dist/windows-update.json
+            dist/Classmate-Lilith-Windows-x64.zip
+          if-no-files-found: error
+      - name: Publish Windows release
+        if: github.event_name == 'push' || inputs.publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $tag = "v$version"
+          if ('${{ github.event_name }}' -eq 'push' -and '${{ github.ref_name }}' -ne $tag) { throw 'Tag and package version differ.' }
+          gh release create $tag "dist/Classmate-Lilith-Setup-$version.exe" "dist/Classmate-Lilith-Setup-$version.exe.sha256" 'dist/windows-update.json' 'dist/Classmate-Lilith-Windows-x64.zip' --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Classmate Lilith $version (Windows)" --generate-notes

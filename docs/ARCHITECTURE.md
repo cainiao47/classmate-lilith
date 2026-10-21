@@ -13,11 +13,15 @@ Classmate Lilith has one online-only transcription workflow shared by Windows an
 
 - `runtime/node/`: platform Node runtime.
 - `runtime/ffmpeg/`: media preparation runtime required by online ASR.
-- Windows stores `data/` and `logs/` beside the executable to preserve the portable-folder workflow.
+- Windows portable mode stores `data/` and `logs/` beside the executable. Installed mode is selected by `installation.json` and keeps data and logs under `%LOCALAPPDATA%\Classmate Lilith`, outside the replaceable program directory.
 - macOS stores mutable data under `~/Library/Application Support/Classmate Lilith/data` and logs under `~/Library/Logs/Classmate Lilith`; a running app never modifies its `.app` bundle.
 - `CLASSMATE_DATA_DIR` and `CLASSMATE_LOG_DIR` allow a native launcher or test environment to override those defaults.
 
 There is deliberately no component catalog, local model directory, ASR engine discovery, or model download API. Platform-specific code is limited to the launcher, Node runtime, FFmpeg binary name, and process termination.
+
+## Windows installation and updates
+
+Inno Setup creates a per-user EXE installer with a stable application identity. A standalone migration utility copies and verifies old portable data, rewrites only owned metadata paths, and leaves the source untouched. `lib/windows-updates.mjs` reads public GitHub releases, verifies an Ed25519-signed update manifest against the bundled public key, and verifies downloaded installers. Browser activity leases and active request/job tracking gate installation. A copied-out C# update helper waits for service and tray exit, runs Setup, restarts the application and checks its version, restoring the previous program files on failure. User data remains outside the app directory and metadata backups are retained. See `WINDOWS_INSTALL.md`.
 
 ## Realtime transcription boundary
 

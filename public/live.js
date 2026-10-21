@@ -1,4 +1,5 @@
 import { ONLINE_TRANSCRIPTION_PROVIDERS, providerConfigured } from "./modules/online-providers.js";
+import { reportUpdateActivity } from "./modules/windows-updates.js";
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
@@ -37,6 +38,7 @@ let partials = new Map();
 let importedJob = null;
 let savedTaskId = "";
 let transcriptEdited = false;
+let updateLease = { flush: async () => {} };
 
 function toast(message, kind = "info") {
   elements.toast.textContent = message;
@@ -50,6 +52,7 @@ function setConnection(label, state = "idle") {
   elements.connection.textContent = label;
   elements.connection.className = `live-connection-state ${state}`;
   elements.headerStatus.textContent = label;
+  updateLease.flush();
 }
 
 function formatClock(milliseconds, withMillis = false) {
@@ -458,6 +461,7 @@ async function createHistoryTask() {
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "保存历史任务失败。");
   savedTaskId = id;
+  await updateLease.flush();
   elements.saveState.textContent = "已保存为历史任务；录音会随任务一同保留。";
   return id;
 }
@@ -506,3 +510,4 @@ window.addEventListener("beforeunload", (event) => {
 });
 
 loadInitialData().then(() => setConnection("等待开始")).catch((error) => { setConnection("初始化失败", "error"); toast(error.message, "error"); });
+updateLease = reportUpdateActivity(() => ({ busy: ["connecting", "recording", "paused", "finalizing"].includes(phase), dirty: Boolean(recordingBlob?.size && !savedTaskId) }), "live");

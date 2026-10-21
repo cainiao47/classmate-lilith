@@ -1,7 +1,8 @@
 param(
   [string]$SourceRoot = (Split-Path -Parent $PSScriptRoot),
   [string]$RuntimeSeed = $env:CLASSMATE_RUNTIME_SEED,
-  [string]$OutputRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) 'dist')
+  [string]$OutputRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) 'dist'),
+  [switch]$SkipArchive
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,6 +10,7 @@ $source = [IO.Path]::GetFullPath($SourceRoot)
 $output = [IO.Path]::GetFullPath($OutputRoot)
 $target = [IO.Path]::GetFullPath((Join-Path $output 'Classmate-Lilith-Windows-x64'))
 $archive = [IO.Path]::GetFullPath((Join-Path $output 'Classmate-Lilith-Windows-x64.zip'))
+$version = (Get-Content -LiteralPath (Join-Path $source 'package.json') -Raw | ConvertFrom-Json).version
 
 if (-not $RuntimeSeed) { throw '请通过 -RuntimeSeed 或 CLASSMATE_RUNTIME_SEED 指定一个包含 runtime\node 和 FFmpeg 的本机构建种子目录。' }
 $seed = [IO.Path]::GetFullPath($RuntimeSeed)
@@ -37,6 +39,14 @@ foreach ($relative in $files) {
 foreach ($directory in @('public', 'lib')) {
   Copy-Item -LiteralPath (Join-Path $source $directory) -Destination (Join-Path $target $directory) -Recurse -Force
 }
+New-Item -ItemType Directory -Force -Path (Join-Path $target 'distribution') | Out-Null
+foreach ($file in @('migrate-portable.mjs','windows-update-public.pem')) {
+  Copy-Item -LiteralPath (Join-Path $source "distribution\$file") -Destination (Join-Path $target "distribution\$file") -Force
+}
+New-Item -ItemType Directory -Force -Path (Join-Path $target 'docs') | Out-Null
+foreach ($file in @('WINDOWS_INSTALL.md','ACADEMIC_LECTURE.md')) {
+  Copy-Item -LiteralPath (Join-Path $source "docs\$file") -Destination (Join-Path $target "docs\$file") -Force
+}
 $launcherBuild = Join-Path $source 'launcher\build.ps1'
 & $launcherBuild -OutputPath (Join-Path $target 'Classmate Lilith.exe')
 if ($LASTEXITCODE -ne 0) { throw 'Windows 启动器编译失败。' }
@@ -56,22 +66,22 @@ foreach ($relative in $forbidden) {
   if (Test-Path -LiteralPath (Join-Path $target $relative)) { throw "发布包包含不应出现的私人数据或旧组件：$relative" }
 }
 
-$manifest = @('# Classmate Lilith 0.16.0 Windows x64 online-only package', '')
+$manifest = @("# Classmate Lilith $version Windows x64 online-only package", '')
 Get-ChildItem -LiteralPath $target -File -Recurse | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object FullName | ForEach-Object {
   $relative = $_.FullName.Substring($target.Length + 1)
   $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   $manifest += "$hash  $relative"
 }
 Set-Content -LiteralPath (Join-Path $target 'SHA256SUMS.txt') -Value $manifest -Encoding utf8
-Compress-Archive -LiteralPath $target -DestinationPath $archive -CompressionLevel Optimal
+if (-not $SkipArchive) { Compress-Archive -LiteralPath $target -DestinationPath $archive -CompressionLevel Optimal }
 
 $privateFiles = Get-ChildItem -LiteralPath $target -File -Recurse | Where-Object { $_.FullName -match '\\data\\(settings|tasks|transcriptions).+\.(json|mp3|wav|m4a|aac|flac|ogg|mp4|mkv|webm)$' }
 if ($privateFiles) { throw '隐私检查失败：发布包中出现了用户数据。' }
 
 [pscustomobject]@{
-  Version = '0.16.0'
+  Version = $version
   Folder = $target
   Archive = $archive
-  ArchiveMiB = [math]::Round((Get-Item -LiteralPath $archive).Length / 1MB, 1)
+  ArchiveMiB = $(if (Test-Path -LiteralPath $archive) {[math]::Round((Get-Item -LiteralPath $archive).Length / 1MB, 1)} else {0})
   Files = @(Get-ChildItem -LiteralPath $target -File -Recurse).Count
 }

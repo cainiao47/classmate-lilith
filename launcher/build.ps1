@@ -18,3 +18,8 @@ $icon = Join-Path (Split-Path $PSScriptRoot -Parent) "assets\app.ico"
 & $compiler /nologo /target:winexe /optimize+ "/out:$OutputPath" "/win32icon:$icon" /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll $source
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Output "Built: $OutputPath"
+$updateSource = Join-Path $PSScriptRoot 'UpdateHelper.cs'
+$updateOutput = Join-Path (Split-Path -Parent $OutputPath) 'UpdateHelper.exe'
+& $compiler /nologo /target:winexe /optimize+ "/out:$updateOutput" /reference:System.dll /reference:System.Windows.Forms.dll $updateSource
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Write-Output "Built: $updateOutput"

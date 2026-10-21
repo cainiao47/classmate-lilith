@@ -26,6 +26,8 @@ namespace ClassmateLilithLauncher
 
         private static void Run()
         {
+            try { if (Array.IndexOf(Environment.GetCommandLineArgs(), "--after-install") < 0) using (Mutex setup = Mutex.OpenExisting("Local\\ClassmateLilithSetup")) { MessageBox.Show("安装正在进行，请等待安装完成后启动。", "Classmate Lilith"); return; } }
+            catch (WaitHandleCannotBeOpenedException) { }
             bool created;
             singleInstance = new Mutex(true, "Local\\ClassmateLilithLauncher-4178", out created);
             if (!created)
@@ -47,7 +49,7 @@ namespace ClassmateLilithLauncher
             try { if (error != null) stack = error.StackTrace ?? ""; } catch { }
             try
             {
-                string directory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
+                string directory = Path.Combine(StorageRoot(), "logs");
                 Directory.CreateDirectory(directory);
                 File.AppendAllText(Path.Combine(directory, "launcher-error.log"), DateTime.Now.ToString("s") + " " + type + ": " + message + Environment.NewLine + stack + Environment.NewLine, Encoding.UTF8);
             }
@@ -61,6 +63,13 @@ namespace ClassmateLilithLauncher
             try { Process.Start(new ProcessStartInfo(Url) { UseShellExecute = true }); }
             catch { }
         }
+
+        internal static string StorageRoot()
+        {
+            return File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "installation.json"))
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Classmate Lilith")
+                : AppDomain.CurrentDomain.BaseDirectory;
+        }
     }
 
     sealed class TrayContext : ApplicationContext
@@ -69,10 +78,17 @@ namespace ClassmateLilithLauncher
         private readonly string token = Guid.NewGuid().ToString("N");
         private Process serverProcess;
         private readonly string baseDir;
+        private readonly EventWaitHandle updateExit;
+        private readonly System.Windows.Forms.Timer updateTimer;
 
         public TrayContext()
         {
             baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            updateExit = new EventWaitHandle(false, EventResetMode.ManualReset, "Local\\ClassmateLilithUpdateExit-" + Process.GetCurrentProcess().Id);
+            updateTimer = new System.Windows.Forms.Timer();
+            updateTimer.Interval = 250;
+            updateTimer.Tick += delegate { if (updateExit.WaitOne(0)) StopAndExit(); };
+            updateTimer.Start();
             tray = new NotifyIcon();
             string iconPath = Path.Combine(baseDir, "assets", "app.ico");
             tray.Icon = File.Exists(iconPath) ? new Icon(iconPath) : SystemIcons.Application;
@@ -123,6 +139,12 @@ namespace ClassmateLilithLauncher
                 // the launcher process lets the child inherit them without enumerating
                 // that legacy case-insensitive dictionary.
                 Environment.SetEnvironmentVariable("TRANSCRIPT_POLISHER_LAUNCH_TOKEN", token, EnvironmentVariableTarget.Process);
+                Environment.SetEnvironmentVariable("CLASSMATE_LAUNCHER_PID", Process.GetCurrentProcess().Id.ToString(), EnvironmentVariableTarget.Process);
+                if (File.Exists(Path.Combine(baseDir, "installation.json")))
+                {
+                    Environment.SetEnvironmentVariable("CLASSMATE_DATA_DIR", Path.Combine(Program.StorageRoot(), "data"), EnvironmentVariableTarget.Process);
+                    Environment.SetEnvironmentVariable("CLASSMATE_LOG_DIR", Path.Combine(Program.StorageRoot(), "logs"), EnvironmentVariableTarget.Process);
+                }
                 Environment.SetEnvironmentVariable("NO_PROXY", "127.0.0.1,localhost", EnvironmentVariableTarget.Process);
                 Environment.SetEnvironmentVariable("no_proxy", "127.0.0.1,localhost", EnvironmentVariableTarget.Process);
                 serverProcess = Process.Start(info);
@@ -255,6 +277,7 @@ namespace ClassmateLilithLauncher
 
         protected override void ExitThreadCore()
         {
+            updateTimer.Stop(); updateTimer.Dispose(); updateExit.Dispose();
             tray.Visible = false;
             tray.Dispose();
             base.ExitThreadCore();

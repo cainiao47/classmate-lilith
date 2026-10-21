@@ -6,6 +6,7 @@ import { webcrypto } from "node:crypto";
 import { freshState, restoreTaskState, TASK_SCHEMA_VERSION } from "../public/modules/task-state.js";
 import { DEFAULT_SHORTCUTS } from "../public/modules/shortcuts.js";
 import { ONLINE_TRANSCRIPTION_PROVIDERS, configuredProviderCount, preferredOnlineProvider, providerConfigured } from "../public/modules/online-providers.js";
+import { assembleLecture, proseMarkdown, prosePlainText } from "../public/modules/prose-format.js";
 
 test("page initialization binds history and all export buttons and loads online settings", async () => {
   const source = (await fs.readFile(new URL("../public/app.js", import.meta.url), "utf8")).replace(/^import .*;\r?\n/gm, "");
@@ -17,7 +18,9 @@ test("page initialization binds history and all export buttons and loads online 
   const exports = ["txt", "md", "docx"].map(format => ({ ...element(), dataset: { proseExport: format } }));
   const requests = [];
   const context = vm.createContext({
-    crypto: webcrypto, freshState, restoreTaskState, TASK_SCHEMA_VERSION, DEFAULT_SHORTCUTS,
+    crypto: webcrypto, freshState, restoreTaskState, TASK_SCHEMA_VERSION, DEFAULT_SHORTCUTS, TextDecoder,
+    assembleLecture, proseMarkdown, prosePlainText,
+    initWindowsUpdates() {},
     ONLINE_TRANSCRIPTION_PROVIDERS, configuredProviderCount, preferredOnlineProvider, providerConfigured,
     combineGlossary: () => "", setTimeout: () => 1, clearTimeout() {},
     document: {
@@ -40,4 +43,33 @@ test("page initialization binds history and all export buttons and loads online 
   assert.ok(requests.includes("/api/settings"));
   assert.ok(!requests.includes("/api/transcription/capabilities"));
   assert.ok(!requests.includes("/api/components"));
+
+  const plan = { version: 1, digest: "example", plan: { title: "讲座标题", sections: [{ title: "理论与例证" }] }, items: [{ sectionIndex: 0 }] };
+  const events = [
+    { type: "plan", lecturePlan: plan }, { type: "start", total: 1, completed: [], chunks: [""] },
+    { type: "usage", usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } },
+    { type: "chunk", index: 0, total: 1, written_text: "### 概念\n保留限定条件。" },
+    { type: "done" }
+  ];
+  context.response = new Response(events.map(JSON.stringify).join("\n")); // Also exercise an unterminated last line.
+  await vm.runInContext("consumeProse(response)", context);
+  assert.match(vm.runInContext("state.proseText", context), /### 1\.1 概念/);
+  assert.equal(vm.runInContext("state.proseUsage.total_tokens", context), 15);
+  assert.equal(vm.runInContext("JSON.stringify(taskData().proseLecturePlan)", context), JSON.stringify(plan));
+  context.response = new Response(JSON.stringify({ type: "stage", stage: "还未完成" }) + "\n");
+  await assert.rejects(vm.runInContext("consumeProse(response)", context), /整理连接中断/);
+
+  const writes = [];
+  context.fetch = (url, options) => new Promise(resolve => { writes.push({ url, body: JSON.parse(options.body), resolve }); });
+  const firstSave = vm.runInContext('state.workingText="较早的修改";queueSave();saveTask(true)', context);
+  await new Promise(resolve => setImmediate(resolve));
+  const latestSave = vm.runInContext('state.workingText="安装前最后的修改";queueSave();saveTask(true)', context);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(writes.length, 1, "autosave writes must not race with the final save before updating");
+  writes[0].resolve({ ok: true }); await firstSave;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(writes.length, 2);
+  assert.equal(writes[1].body.workingText, "安装前最后的修改");
+  writes[1].resolve({ ok: true }); await latestSave;
+  assert.equal(vm.runInContext("savedRevision===taskRevision", context), true);
 });

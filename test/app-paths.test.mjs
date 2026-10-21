@@ -10,6 +10,14 @@ test("Windows keeps portable data and logs beside the application", () => {
   assert.equal(result.logsDir, path.join(root, "logs"));
 });
 
+test("Windows installed mode separates user data from replaceable program files", () => {
+  const local = path.resolve("local-profile");
+  const result = appStoragePaths(path.resolve("program"), { platform: "win32", installed: true, environment: { LOCALAPPDATA: local } });
+  assert.equal(result.installed, true);
+  assert.equal(result.dataDir, path.join(local, "Classmate Lilith", "data"));
+  assert.equal(result.logsDir, path.join(local, "Classmate Lilith", "logs"));
+});
+
 test("macOS stores mutable files outside the signed app bundle", () => {
   const root = path.resolve("Classmate Lilith.app", "Contents", "Resources", "app");
   const home = path.resolve("Users", "lilith");

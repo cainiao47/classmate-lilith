@@ -8,6 +8,7 @@ release/
 cache/
 temp/
 output/
+updates/
 engines/
 models/
 runtime/

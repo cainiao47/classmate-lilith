@@ -33,6 +33,14 @@ test("restored tasks reset transient runtime state", () => {
   assert.equal(freshState().status, "draft");
 });
 
+test("new tasks use academic lecture style while old choices and checkpoints survive restore", () => {
+  assert.equal(freshState().proseMode, "academic");
+  assert.equal(restoreTaskState({ id: "old-task" }).proseMode, "detailed");
+  assert.equal(restoreTaskState({ id: "old-task", proseMode: "faithful" }).proseMode, "faithful");
+  const plan = { version: 1, digest: "example", plan: { title: "示例" } };
+  assert.deepEqual(restoreTaskState({ id: "new-task", proseMode: "academic", proseLecturePlan: plan }).proseLecturePlan, plan);
+});
+
 test("new and restored tasks use an online transcription provider", () => {
   assert.equal(freshState().transcriptionEngine, "alibaba");
   assert.equal(freshState().transcriptionModel, "qwen3-asr-flash");
