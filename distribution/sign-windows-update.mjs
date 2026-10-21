@@ -19,7 +19,11 @@ if (args.includes("--init-key")) {
     await fs.writeFile(privateFile, privateKey.export({ format: "pem", type: "pkcs8" }), { flag: "wx", mode: 0o600 });
   }
   const publicKey = createPublicKey(privateKey).export({ format: "pem", type: "spki" });
-  try { if (await fs.readFile(publicFile, "utf8") !== publicKey) throw new Error("公钥与现有私钥不匹配。"); }
+  try {
+    const existing = createPublicKey(await fs.readFile(publicFile, "utf8")).export({ format: "der", type: "spki" });
+    const expected = createPublicKey(publicKey).export({ format: "der", type: "spki" });
+    if (!existing.equals(expected)) throw new Error("公钥与现有私钥不匹配。");
+  }
   catch (error) { if (error.code !== "ENOENT") throw error; await fs.writeFile(publicFile, publicKey, { flag: "wx" }); }
   console.log("Windows 更新签名密钥已准备。私钥仅保存在忽略目录中，请单独备份，不要提交到 Git。");
 } else {
