@@ -1,16 +1,17 @@
 # 版本核对记录
 
-核对日期：2026-10-21。已将 GitHub v0.21.1 源码合入本地开发线并构建 Windows v0.22.0；v0.22.1 将安装版数据改存系统“文档”；当前 v0.22.2 修复 Windows 高清缩放文字模糊。不上传 GitHub、不替用户安装、不修改旧客户端或用户数据。
+核对日期：2026-10-21。已将 GitHub v0.21.1 源码合入 Windows 开发线：v0.22.0 加入安装更新，v0.22.1 将安装版数据改存系统“文档”，v0.22.2 修复 Windows 高清缩放文字模糊。本轮发布 v0.22.2 源码与 Windows 包，不重新构建 macOS，不替用户安装或修改用户数据。
 
 ## GitHub 与本地对应关系
 
 | 位置 | 核对结果 |
 | --- | --- |
-| GitHub 最新正式 Release | [v0.21.1](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.21.1)，2026-10-03 发布，含 Windows/macOS 便携包，不含 EXE 安装器 |
-| GitHub 主分支 | `dc377b8230acc697961e4484c8bad66c147cc1e7`，`package.json` 为 `0.21.1` |
+| 发布前 GitHub 最新正式 Release | [v0.21.1](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.21.1)，2026-10-03 发布，含 Windows/macOS 便携包，不含 EXE 安装器 |
+| 发布前 GitHub 主分支 | `dc377b8230acc697961e4484c8bad66c147cc1e7`，`package.json` 为 `0.21.1`；本轮以非强制推送更新 |
+| 本轮 Windows Release | [v0.22.2](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.22.2)，安装器、便携包、SHA-256 与签名更新清单；不附新 macOS 包 |
 | GitHub 历史正式版本 | `v0.18.0` 已于 2026-10-02 发布，不可复用该编号发布不同程序 |
 | D 盘现有客户端 | `D:\Classmate-Lilith-Windows-x64\Classmate-Lilith-Windows-x64\package.json` 为 `0.21.1`；保持不变 |
-| 本地开发源码 | 功能版 `0.22.0`、文档数据目录修订版 `0.22.1`；当前高清显示修订版 `0.22.2`，尚未上传 GitHub |
+| 本轮发布源码 | 功能版 `0.22.0`、文档数据目录修订版 `0.22.1`；当前高清显示修订版 `0.22.2` |
 | 本地旧构建产物 | `dist/windows-0.18.0/` 保持原样，不能改名或用于覆盖 v0.21.1 |
 
 依据：[最新 Release API](https://api.github.com/repos/cainiao47/classmate-lilith/releases/latest)、[主分支 package.json](https://github.com/cainiao47/classmate-lilith/blob/main/package.json)、[源码基线差异](https://github.com/cainiao47/classmate-lilith/compare/776a0f9...dc377b8230acc697961e4484c8bad66c147cc1e7)。核对时 `refs/tags/v0.22.0` 不存在。新增安装、应用内更新属于功能版本，所以下一个开发版本使用 `0.22.0`，不冒充已发布的 `0.21.1`。
@@ -34,4 +35,4 @@
 3. 从合并后源码构建当前 v0.22.2 便携包与安装器，重新生成校验文件和签名更新清单；不能重命名旧 EXE/ZIP 或复用旧签名清单。
 4. 发布前重新核对 GitHub，避免期间出现新版本导致编号冲突。本轮不构建或发布 macOS。
 
-本地验证补充：完整自动测试覆盖 v0.21.1 工程、人工版本、凭据原字节及录音路径迁移；卸载的保留、删除与取消分支使用独立的测试安装器和假数据验证，并检查独立备份与目录链接目标不被删除。正式包另做安装、覆盖重装和静默卸载保留数据验证。模型测试使用模拟响应，不等同于真实在线服务的长时间实录测试。
+本地验证补充：119 项自动测试通过，覆盖 v0.21.1 工程、人工版本、凭据原字节及录音路径迁移。原生窗口在本机 175% 缩放下验证 DPI 与 WebView2 渲染比例一致；另做多比例窗口边界测试。卸载的保留、删除与取消分支使用独立测试安装器和假数据验证，确认独立备份与目录链接目标不被删除。v0.22.1 正式包已做安装、覆盖重装和静默卸载保留数据验证；v0.22.2 未在真实用户文档上重复安装测试，使用隔离迁移与卸载测试保护用户数据。模型测试使用模拟响应，不等同于真实在线服务的长时间实录测试。

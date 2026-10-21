@@ -21,13 +21,13 @@ Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线
 
 | 系统 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows 10/11 x64 安装版 | `Classmate-Lilith-Setup-版本号.exe` | 安装向导、旧版数据导入、应用内检查与安装更新 |
-| Windows 10/11 x64 便携版 | `Classmate-Lilith-Windows-x64.zip` | 解压后双击 `Classmate Lilith.exe`，无需安装 |
+| Windows 10/11 x64 安装版 | [v0.22.2 安装包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.22.2/Classmate-Lilith-Setup-0.22.2.exe) | 安装向导、旧版数据导入、应用内检查与安装更新 |
+| Windows 10/11 x64 便携版 | [v0.22.2 便携包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.22.2/Classmate-Lilith-Windows-x64.zip) | 解压后双击 `Classmate Lilith.exe`，无需安装 |
 | macOS 13+ Apple Silicon | [v0.21.1 下载页](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.21.1) | 本轮保留 GitHub 现有版本，首次启动需手动放行 |
 
 Windows 安装与覆盖升级详见 [Windows 安装说明](docs/WINDOWS_INSTALL.md)。安装版将用户数据独立保存，升级保留数据；卸载时显示数据路径，可手动选择保留或经二次确认后删除。首次安装可以从旧便携版复制并校验数据。
 
-发布状态（2026-10-21 核对）：GitHub 最新正式版为 **v0.21.1**。本地 **v0.22.2 Windows 安装版**已合并该版本源码与本轮安装、更新及讲座整理功能，尚未上传 GitHub；正式发布页目前仍没有 EXE 安装器。请使用本轮重新构建的 `Classmate-Lilith-Setup-0.22.2.exe`，不要使用此前误编号的本地 v0.18.0 包。详见 [版本核对记录](docs/VERSION_AUDIT.md)。
+当前 Windows 正式版为 **[v0.22.2](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.22.2)**（2026-10-21），包含 EXE 安装器、便携包和签名更新清单；已合并 GitHub v0.21.1 源码。此前误编号的本地 v0.18.0 包不再使用。macOS 下载仍为 **v0.21.1**，本轮不重新构建。详见 [发布说明](docs/RELEASE_0.22.2.md) 与 [版本核对记录](docs/VERSION_AUDIT.md)。
 
 macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次运行时请按 [macOS 安装说明](docs/MACOS_INSTALL.md) 操作。Intel Mac 暂未提供预编译包。
 
@@ -44,7 +44,7 @@ Windows 版使用 WebView2独立应用窗口；Windows 11 已包含对应运行�
 - 全局术语库、任务历史、运行日志与 TXT/Markdown/Word/SRT 导出。
 - API Key 只存放在本机，不提交到仓库。
 
-## Windows 开发版本：0.22.2（未发布）
+## Windows 当前版本：0.22.2
 
 - 增加 EXE 安装向导、旧便携版数据迁移、快捷方式和卸载入口，安装版数据与程序分开保存。
 - 增加应用内更新检查、签名和完整性验证、确认安装、程序与元数据备份，以及安装失败时的程序恢复。
@@ -119,7 +119,7 @@ npm run check
 npm test
 ```
 
-持续集成会在 Windows 与 macOS 上执行语法检查和自动测试。正式版本由带版本标签的 GitHub Actions 构建：Node.js、Windows FFmpeg 和 LAME 下载包会核对上游 SHA-256，macOS FFmpeg 从官方版本标签构建，最终生成两个平台压缩包及 SHA-256 校验文件。
+持续集成会在 Windows 与 macOS 上执行语法检查和自动测试，不自动发布 macOS 包。Windows 可由本机验证后上传，或通过 Windows 发布工作流构建；标签对应的正式发布已具备完整 Windows 资源时，工作流跳过重复构建。CI 构建需要配置与发布公钥对应的签名私钥 secret；私钥不提交到源码或发布资源。跨平台发布工作流仅手动触发。构建脚本会校验下载的运行时和工具，发布包附 SHA-256 校验文件。
 
 构建说明见 [Windows 发布脚本](distribution/build-windows-base.ps1)、[macOS 发布脚本](distribution/build-macos-arm64.sh) 与 [macOS 验证清单](docs/MACOS_VALIDATION.md)。
 

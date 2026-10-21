@@ -12,7 +12,7 @@ Before a GitHub Release, test online transcription separately with Alibaba, Tenc
 
 For the installed edition, run `distribution/build-windows-installer.ps1` against the clean portable package. Use the existing update-signing private key; the matching public key is committed in `distribution/windows-update-public.pem`. The build writes the EXE, its SHA-256 file, and the signed `windows-update.json` manifest. Never generate a new key to replace a lost release key without a migration plan.
 
-`windows-release.yml` builds Windows only. It requires the `WINDOWS_UPDATE_PRIVATE_KEY` repository secret. A version tag must match `package.json`; workflow dispatch can build without publishing. Publish all generated installer assets together. The older dual-platform workflow is manual only, so a Windows release does not rebuild or republish macOS. See `WINDOWS_INSTALL.md` for installation and validation steps.
+`windows-release.yml` builds Windows only. CI builds require the `WINDOWS_UPDATE_PRIVATE_KEY` repository secret. A version tag must match `package.json`; workflow dispatch can build without publishing. Alternatively, publish verified local artifacts in a draft, verify all uploaded digests, then publish the release. The tag workflow skips rebuilding when a non-draft, non-prerelease already contains the complete Windows asset set. This avoids replacing locally verified artifacts and does not require uploading the private key to GitHub. Publish the installer, installer SHA-256, portable ZIP, ZIP SHA-256, and signed update manifest together. The older dual-platform workflow is manual only, so a Windows release does not rebuild or republish macOS. See `WINDOWS_INSTALL.md` for installation and validation steps.
 
 ## macOS
 

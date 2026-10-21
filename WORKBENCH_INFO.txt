@@ -1,6 +1,6 @@
 Classmate Lilith
 Version: 0.22.2
-Release status: Local Windows installer; not published to GitHub
+Release status: Windows release v0.22.2; macOS remains on v0.21.1
 Mode: Online transcription only
 
 Transcription providers:

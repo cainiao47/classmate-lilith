@@ -44,7 +44,7 @@ foreach ($file in @('migrate-portable.mjs','windows-update-public.pem')) {
   Copy-Item -LiteralPath (Join-Path $source "distribution\$file") -Destination (Join-Path $target "distribution\$file") -Force
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $target 'docs') | Out-Null
-foreach ($file in @('WINDOWS_INSTALL.md','ACADEMIC_LECTURE.md','VERSION_AUDIT.md')) {
+foreach ($file in @('WINDOWS_INSTALL.md','ACADEMIC_LECTURE.md','VERSION_AUDIT.md','RELEASE_0.22.2.md')) {
   Copy-Item -LiteralPath (Join-Path $source "docs\$file") -Destination (Join-Path $target "docs\$file") -Force
 }
 $launcherBuild = Join-Path $source 'launcher\build.ps1'
@@ -73,7 +73,11 @@ Get-ChildItem -LiteralPath $target -File -Recurse | Where-Object { $_.Name -ne '
   $manifest += "$hash  $relative"
 }
 Set-Content -LiteralPath (Join-Path $target 'SHA256SUMS.txt') -Value $manifest -Encoding utf8
-if (-not $SkipArchive) { Compress-Archive -LiteralPath $target -DestinationPath $archive -CompressionLevel Optimal }
+if (-not $SkipArchive) {
+  Compress-Archive -LiteralPath $target -DestinationPath $archive -CompressionLevel Optimal
+  $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+  Set-Content -LiteralPath (Join-Path $output 'Classmate-Lilith-Windows-x64.sha256') -Value "$archiveHash  Classmate-Lilith-Windows-x64.zip" -Encoding ascii
+}
 
 $privateFiles = Get-ChildItem -LiteralPath $target -File -Recurse | Where-Object { $_.FullName -match '\\data\\(settings|tasks|transcriptions).+\.(json|mp3|wav|m4a|aac|flac|ogg|mp4|mkv|webm)$' }
 if ($privateFiles) { throw '隐私检查失败：发布包中出现了用户数据。' }
