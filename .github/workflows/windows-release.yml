@@ -77,9 +77,15 @@ jobs:
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           .\distribution\test-windows-installer.ps1 -Installer (Join-Path $PWD "dist\Classmate-Lilith-Setup-$version.exe")
+      - name: Verify native launcher Documents paths
+        shell: pwsh
+        run: .\distribution\test-windows-launcher-storage.ps1 -PackageRoot (Join-Path $PWD 'dist\Classmate-Lilith-Windows-x64')
       - name: Verify uninstall choices and independent backup protection
         shell: pwsh
         run: .\distribution\test-windows-uninstall.ps1 -InnoCompiler $env:INNO_COMPILER
+      - name: Verify legacy installation migration to Documents
+        shell: pwsh
+        run: .\distribution\test-windows-documents-migration.ps1 -PackageRoot (Join-Path $PWD 'dist\Classmate-Lilith-Windows-x64') -InnoCompiler $env:INNO_COMPILER
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer

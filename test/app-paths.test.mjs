@@ -10,12 +10,26 @@ test("Windows keeps portable data and logs beside the application", () => {
   assert.equal(result.logsDir, path.join(root, "logs"));
 });
 
-test("Windows installed mode separates user data from replaceable program files", () => {
-  const local = path.resolve("local-profile");
-  const result = appStoragePaths(path.resolve("program"), { platform: "win32", installed: true, environment: { LOCALAPPDATA: local } });
+test("Windows installed mode stores data under the actual Documents folder, separate from program files", () => {
+  const documents = path.resolve("redirected-documents");
+  const result = appStoragePaths(path.resolve("program"), { platform: "win32", installed: true, documents, environment: { LOCALAPPDATA: path.resolve("unused-local-profile") } });
   assert.equal(result.installed, true);
-  assert.equal(result.dataDir, path.join(local, "Classmate Lilith", "data"));
-  assert.equal(result.logsDir, path.join(local, "Classmate Lilith", "logs"));
+  assert.equal(result.dataDir, path.join(documents, "Classmate Lilith", "data"));
+  assert.equal(result.logsDir, path.join(documents, "Classmate Lilith", "logs"));
+});
+
+test("Windows launcher-provided redirected Documents path is respected", () => {
+  const documents = path.resolve("OneDrive", "文档");
+  const result = appStoragePaths(path.resolve("program"), { platform: "win32", installed: true, environment: { CLASSMATE_DOCUMENTS_DIR: documents } });
+  assert.equal(result.dataDir, path.join(documents, "Classmate Lilith", "data"));
+  assert.equal(result.logsDir, path.join(documents, "Classmate Lilith", "logs"));
+});
+
+test("Windows explicit data and log overrides need no Documents discovery", () => {
+  const dataDir = path.resolve("isolated", "data"), logsDir = path.resolve("isolated", "logs");
+  const result = appStoragePaths(path.resolve("program"), { platform: "win32", installed: true, environment: { CLASSMATE_DATA_DIR: dataDir, CLASSMATE_LOG_DIR: logsDir } });
+  assert.equal(result.dataDir, dataDir);
+  assert.equal(result.logsDir, logsDir);
 });
 
 test("macOS stores mutable files outside the signed app bundle", () => {

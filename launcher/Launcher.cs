@@ -27,6 +27,7 @@ namespace ClassmateLilithLauncher
             AppDomain.CurrentDomain.UnhandledException += delegate(object sender, UnhandledExceptionEventArgs args) { ReportFailure(args.ExceptionObject as Exception); };
             try
             {
+                NormalizeLegacyStorageEnvironment();
                 try { if (Array.IndexOf(Environment.GetCommandLineArgs(), "--after-install") < 0) using (Mutex setup = Mutex.OpenExisting("Local\\ClassmateLilithSetup")) { MessageBox.Show("安装正在进行，请等待安装完成后启动。", "Classmate Lilith"); return; } }
                 catch (WaitHandleCannotBeOpenedException) { }
                 bool created;
@@ -75,15 +76,31 @@ namespace ClassmateLilithLauncher
 
         internal static string StorageRoot()
         {
-            return File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "installation.json"))
-                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Classmate Lilith")
-                : AppDomain.CurrentDomain.BaseDirectory;
+            if (!File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "installation.json"))) return AppDomain.CurrentDomain.BaseDirectory;
+            string documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            if (String.IsNullOrEmpty(documents) || !Path.IsPathRooted(documents)) throw new InvalidOperationException("系统文档位置不可用，请检查 Windows 文档文件夹设置。");
+            return Path.Combine(documents, "Classmate Lilith");
         }
 
         internal static string DataDirectory()
         {
             string configured = Environment.GetEnvironmentVariable("CLASSMATE_DATA_DIR");
             return String.IsNullOrEmpty(configured) ? Path.Combine(StorageRoot(), "data") : Path.GetFullPath(configured);
+        }
+
+        internal static void NormalizeLegacyStorageEnvironment()
+        {
+            if (!File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "installation.json"))) return;
+            string legacy = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Classmate Lilith");
+            foreach (string name in new string[] { "CLASSMATE_DATA_DIR", "CLASSMATE_LOG_DIR" })
+            {
+                string value = Environment.GetEnvironmentVariable(name);
+                string previousDefault = Path.Combine(legacy, name == "CLASSMATE_DATA_DIR" ? "data" : "logs");
+                // A v0.22.0 updater inherits its launcher's old default paths.
+                // Discard only those obsolete defaults, not custom overrides.
+                if (!String.IsNullOrEmpty(value) && String.Equals(Path.GetFullPath(value).TrimEnd(Path.DirectorySeparatorChar), previousDefault, StringComparison.OrdinalIgnoreCase))
+                    Environment.SetEnvironmentVariable(name, null, EnvironmentVariableTarget.Process);
+            }
         }
     }
 
@@ -541,6 +558,7 @@ namespace ClassmateLilithLauncher
                 Environment.SetEnvironmentVariable("CLASSMATE_LAUNCHER_PID", Process.GetCurrentProcess().Id.ToString(), EnvironmentVariableTarget.Process);
                 if (File.Exists(Path.Combine(baseDir, "installation.json")))
                 {
+                    Environment.SetEnvironmentVariable("CLASSMATE_DOCUMENTS_DIR", Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), EnvironmentVariableTarget.Process);
                     Environment.SetEnvironmentVariable("CLASSMATE_DATA_DIR", Program.DataDirectory(), EnvironmentVariableTarget.Process);
                     if (String.IsNullOrEmpty(Environment.GetEnvironmentVariable("CLASSMATE_LOG_DIR")))
                         Environment.SetEnvironmentVariable("CLASSMATE_LOG_DIR", Path.Combine(Program.StorageRoot(), "logs"), EnvironmentVariableTarget.Process);

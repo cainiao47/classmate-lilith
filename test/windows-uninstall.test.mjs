@@ -20,8 +20,16 @@ test("interactive uninstall offers keep, delete and cancel with visible storage 
 test("data cleanup is post-uninstall, explicitly opted-in and confined to the per-user app folder", () => {
   assert.match(source, /CurUninstallStep <> usPostUninstall then Exit/);
   assert.match(source, /if not DeleteUserData then[\s\S]*?Exit;/);
-  assert.match(source, /ExpandFileName\(ExpandConstant\('\{localappdata\}\\Classmate Lilith'\)\)/);
+  assert.match(source, /ExpandFileName\(ExpandConstant\('\{userdocs\}\\Classmate Lilith'\)\)/);
   assert.match(source, /DelTree\(DataPath, True, True, True\)/);
   assert.doesNotMatch(source, /DelTree\(ExpandConstant\('\{app\}/);
   assert.match(source, /#ifdef UninstallTestBuild[\s\S]*?TESTCHOICE[\s\S]*?#endif/);
+});
+
+test("the installer shows the Documents data path and automatically selects legacy installed data without merging", () => {
+  assert.match(source, /Result := ExpandConstant\('\{userdocs\}\\Classmate Lilith'\)/);
+  assert.match(source, /DirExists\(LegacyDataRoot \+ '\\data'\)/);
+  assert.match(source, /MigrationEdit.Text := LegacyDataRoot/);
+  assert.match(source, /not DirExists\(UserDataRoot \+ '\\data'\)/);
+  assert.match(source, /数据保存到/);
 });

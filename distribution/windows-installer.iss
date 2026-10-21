@@ -15,6 +15,11 @@
     #error TestUserDataRoot requires UninstallTestBuild
   #endif
 #endif
+#ifdef TestLegacyDataRoot
+  #ifndef UninstallTestBuild
+    #error TestLegacyDataRoot requires UninstallTestBuild
+  #endif
+#endif
 #ifdef UninstallTestBuild
   #ifndef TestUserDataRoot
     #error UninstallTestBuild requires an isolated TestUserDataRoot
@@ -78,6 +83,15 @@ begin
 #ifdef UninstallTestBuild
   Result := ExpandConstant('{#TestUserDataRoot}');
 #else
+  Result := ExpandConstant('{userdocs}\Classmate Lilith');
+#endif
+end;
+
+function LegacyDataRoot: String;
+begin
+#ifdef TestLegacyDataRoot
+  Result := ExpandConstant('{#TestLegacyDataRoot}');
+#else
   Result := ExpandConstant('{localappdata}\Classmate Lilith');
 #endif
 end;
@@ -126,7 +140,7 @@ begin
     '日志、窗口缓存及更新备份目录：'#13#10 + UserDataRoot + #13#10#13#10 +
     '保留数据：以后重装可继续使用设置、术语、工程、人工版本和录音。'#13#10 +
     '删除数据：永久删除上述目录中的设置、API 配置、工程、录音、缓存、日志及更新备份。'#13#10 +
-    '不会删除旧便携版目录或你另外制作的备份。';
+    '不会删除旧便携版、上版旧位置的数据副本或你另外制作的备份。';
   Choice := TaskDialogMsgBox('卸载 Classmate Lilith 后，是否保留用户数据？', Description,
     mbConfirmation, MB_YESNOCANCEL, ['卸载并保留数据（推荐）', '卸载并删除数据', '取消卸载'], 0);
   Result := (Choice = IDYES) or (Choice = IDNO);
@@ -153,7 +167,7 @@ begin
     the old portable folder, or an arbitrary command-line path. DelTree removes
     reparse points without following their targets. }
 #ifndef UninstallTestBuild
-  if CompareText(ExpandFileName(DataPath), ExpandFileName(ExpandConstant('{localappdata}\Classmate Lilith'))) <> 0 then
+  if CompareText(ExpandFileName(DataPath), ExpandFileName(ExpandConstant('{userdocs}\Classmate Lilith'))) <> 0 then
     RaiseException('数据目录校验失败，未删除用户数据。');
 #endif
   if DirExists(DataPath) then
@@ -182,10 +196,13 @@ begin
   Description := TNewStaticText.Create(MigrationPage);
   Description.Parent := MigrationPage.Surface; Description.AutoSize := False; Description.WordWrap := True;
   Description.SetBounds(0, 0, MigrationPage.SurfaceWidth, ScaleY(65));
-  Description.Caption := '如需导入，请选择包含 Classmate Lilith.exe 和 data 文件夹的旧版目录。留空则跳过。原目录不会被删除。';
+  Description.Caption := '数据保存到：' + UserDataRoot + '\data'#13#10 +
+    '可选择包含 data 的旧便携版或上版安装数据目录。原目录不会被删除。';
   MigrationEdit := TNewEdit.Create(MigrationPage); MigrationEdit.Parent := MigrationPage.Surface;
   MigrationEdit.SetBounds(0, ScaleY(75), MigrationPage.SurfaceWidth - ScaleX(90), ScaleY(24));
   MigrationEdit.Text := ExpandConstant('{param:MIGRATEFROM|}');
+  if (MigrationEdit.Text = '') and DirExists(LegacyDataRoot + '\data') then
+    MigrationEdit.Text := LegacyDataRoot;
   Browse := TNewButton.Create(MigrationPage); Browse.Parent := MigrationPage.Surface;
   Browse.SetBounds(MigrationPage.SurfaceWidth - ScaleX(80), ScaleY(74), ScaleX(80), ScaleY(26));
   Browse.Caption := '浏览…'; Browse.OnClick := @BrowseOldApp;
@@ -193,7 +210,7 @@ end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
 begin
-  Result := (PageID = MigrationPage.ID) and DirExists(ExpandConstant('{localappdata}\Classmate Lilith\data'));
+  Result := (PageID = MigrationPage.ID) and DirExists(UserDataRoot + '\data');
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -210,13 +227,13 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var Code: Integer; Arguments, DataPath: String;
 begin
-  if (CurStep = ssPostInstall) and (MigrationEdit.Text <> '') and not DirExists(ExpandConstant('{localappdata}\Classmate Lilith\data')) then
+  if (CurStep = ssPostInstall) and (MigrationEdit.Text <> '') and not DirExists(UserDataRoot + '\data') then
   begin
-    DataPath := ExpandConstant('{localappdata}\Classmate Lilith\data');
+    DataPath := UserDataRoot + '\data';
     Arguments := '"' + ExpandConstant('{app}\distribution\migrate-portable.mjs') + '" --source "' + AddBackslash(MigrationEdit.Text) + '." --destination "' + DataPath + '"';
     if not Exec(ExpandConstant('{app}\runtime\node\node.exe'), Arguments, ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, Code) then Code := 1;
     MigrationFailed := Code <> 0;
-    if MigrationFailed then MsgBox('数据迁移没有完成，旧数据完整保留。请查看 %LOCALAPPDATA%\Classmate Lilith\migration-error.txt，处理后重新导入；暂不自动启动程序。', mbError, MB_OK);
+    if MigrationFailed then MsgBox('数据迁移没有完成，旧数据完整保留。请查看：'#13#10 + UserDataRoot + '\migration-error.txt'#13#10 + '处理后重新导入；暂不自动启动程序。', mbError, MB_OK);
   end;
 end;
 

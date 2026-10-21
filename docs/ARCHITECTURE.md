@@ -13,7 +13,7 @@ Classmate Lilith has one online-only transcription workflow shared by its Window
 
 - `runtime/node/`: platform Node runtime.
 - `runtime/ffmpeg/`: media preparation runtime required by online ASR.
-- Windows portable mode stores `data/` and `logs/` beside the executable. Installed mode is selected by `installation.json` and keeps data and logs under `%LOCALAPPDATA%\Classmate Lilith`, outside the replaceable program directory.
+- Windows portable mode stores `data/` and `logs/` beside the executable. Installed mode is selected by `installation.json` and keeps data, logs and update backups under the Windows Documents known folder in `Classmate Lilith`, outside the replaceable program directory. The launcher passes the resolved Documents path to Node; direct server startup also queries the Windows known folder when needed.
 - Windows uses the shared Evergreen WebView2 Runtime and falls back to the system browser when that runtime is unavailable. Only the small SDK bridge assemblies and loader are shipped in the portable ZIP.
 - macOS stores mutable data under `~/Library/Application Support/Classmate Lilith/data` and logs under `~/Library/Logs/Classmate Lilith`; a running app never modifies its `.app` bundle.
 - `CLASSMATE_DATA_DIR` and `CLASSMATE_LOG_DIR` allow a native launcher or test environment to override those defaults.

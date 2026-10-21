@@ -6,6 +6,10 @@ $app = Join-Path $testRoot 'app'
 $data = Join-Path $testRoot 'profile\data'
 $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{63217C39-F1A7-48D1-9BC3-366859B24099}_is1'
 if (Test-Path -LiteralPath $key) { throw '检测到用户已安装的版本；为避免改动其卸载信息，本测试停止。' }
+$actualDocuments = [Environment]::GetFolderPath([Environment+SpecialFolder]::MyDocuments)
+foreach ($realData in @((Join-Path $actualDocuments 'Classmate Lilith\data'), (Join-Path $env:LOCALAPPDATA 'Classmate Lilith\data'))) {
+  if (Test-Path -LiteralPath $realData) { throw '检测到真实用户数据，为避免安装器自动迁移它，本测试停止。' }
+}
 $installerPath = [IO.Path]::GetFullPath($Installer)
 New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
 $oldData = $env:CLASSMATE_DATA_DIR

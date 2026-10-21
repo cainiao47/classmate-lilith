@@ -37,6 +37,7 @@ export function initWindowsUpdates({ save, activity }) {
     $("#updateInstall").disabled = Boolean(value.busyReasons?.length);
     $("#updateBusy").textContent = value.busyReasons?.length ? `安装前请处理：${value.busyReasons.join("、")}` : "更新会保留设置、术语库、任务和录音。";
     $("#updateReleaseLink").href = value.releaseUrl;
+    $("#updateDataDirectory").textContent = value.dataDirectory ? `数据位置：${value.dataDirectory}` : "";
     $("#updatePortable").hidden = value.installed;
     const percent = value.total ? Math.min(100, Math.round(value.downloaded / value.total * 100)) : 0;
     $("#updateDownloadProgress").hidden = value.status !== "downloading";

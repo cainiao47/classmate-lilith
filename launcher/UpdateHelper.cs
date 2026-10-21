@@ -60,7 +60,11 @@ namespace ClassmateLilithUpdate
                 string package = Path.GetFullPath(args[0]);
                 app = Path.GetFullPath(args[4]); backup = Path.GetFullPath(args[5]);
                 string ready = Path.GetFullPath(args[6]);
-                string cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Classmate Lilith", "updates");
+                string configuredData = Environment.GetEnvironmentVariable("CLASSMATE_DATA_DIR");
+                string support = String.IsNullOrEmpty(configuredData)
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Classmate Lilith")
+                    : Path.GetDirectoryName(Path.GetFullPath(configuredData));
+                string cache = Path.Combine(support, "updates");
                 if (!IsInside(cache, package) || !IsInside(cache, backup) || !IsInside(cache, ready) ||
                     !IsInside(cache, Application.ExecutablePath) || !File.Exists(Path.Combine(app, "installation.json")) || !File.Exists(Path.Combine(backup, "backup.json")))
                     throw new Exception("更新目录验证失败。");
