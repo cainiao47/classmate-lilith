@@ -29,7 +29,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $target 'runtime') | Out-Nu
 $files = @(
   'server.mjs', 'settings-store.mjs', 'transcription-worker.mjs', 'package.json', 'package-lock.json',
   'README.md', 'Classmate Lilith 使用说明.txt', 'WORKBENCH_INFO.txt',
-  'THIRD_PARTY_NOTICES.txt', 'PRIVACY.md'
+  'LICENSE', 'ASSETS_LICENSE.md', 'THIRD_PARTY_NOTICES.txt', 'PRIVACY.md'
 )
 foreach ($relative in $files) {
   $from = Join-Path $source $relative
@@ -44,7 +44,7 @@ foreach ($file in @('migrate-portable.mjs','windows-update-public.pem')) {
   Copy-Item -LiteralPath (Join-Path $source "distribution\$file") -Destination (Join-Path $target "distribution\$file") -Force
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $target 'docs') | Out-Null
-foreach ($file in @('WINDOWS_INSTALL.md','ACADEMIC_LECTURE.md')) {
+foreach ($file in @('WINDOWS_INSTALL.md','ACADEMIC_LECTURE.md','VERSION_AUDIT.md')) {
   Copy-Item -LiteralPath (Join-Path $source "docs\$file") -Destination (Join-Path $target "docs\$file") -Force
 }
 $launcherBuild = Join-Path $source 'launcher\build.ps1'

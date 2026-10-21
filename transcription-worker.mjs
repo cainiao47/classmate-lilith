@@ -9,6 +9,7 @@ import { ONLINE_TRANSCRIPTION_PROVIDERS, isAlibabaFileModel } from "./public/mod
 
 const AUDIO_EXTENSIONS = new Set([".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".mp4", ".mkv", ".mov", ".avi", ".webm"]);
 const ONLINE_ENGINES = Object.fromEntries(ONLINE_TRANSCRIPTION_PROVIDERS.map((provider) => [provider.id, provider.name]));
+export const ONLINE_REQUEST_TIMEOUT_MS = 3 * 60 * 1000;
 
 function safeName(value) {
   const cleaned = String(value || "recording").replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").trim();
@@ -184,6 +185,17 @@ export class TranscriptionManager {
     return this.publicJob(job);
   }
 
+  async shutdown() {
+    const active = [...this.jobs.values()].filter((job) => ["queued", "running"].includes(job.status));
+    for (const job of active) await this.cancel(job.id).catch(() => {});
+    await Promise.all(active.map((job) => job.process && job.process.exitCode === null
+      ? Promise.race([
+        new Promise((resolve) => job.process.once("exit", resolve)),
+        new Promise((resolve) => setTimeout(resolve, 2500))
+      ])
+      : Promise.resolve()));
+  }
+
   async remove(id) {
     if (!/^transcription-[a-f0-9-]+$/.test(String(id || ""))) throw new Error("转写任务编号无效。");
     const jobsRoot = path.resolve(this.dataDir, "transcriptions", "jobs");
@@ -288,8 +300,8 @@ export class TranscriptionManager {
     form.append("model", settings.openaiModel || "gpt-transcribe");
     if (job.language !== "auto") form.append("language", job.language);
     if (job.prompt) form.append("prompt", `课堂录音转写。请准确识别这些专业词和人名：${job.prompt}`);
-    const response = await fetch(settings.openaiEndpoint || "https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST", headers: { Authorization: `Bearer ${settings.openaiApiKey}` }, body: form, signal: job.abortController.signal
+    const response = await this.fetchOnline(job, settings.openaiEndpoint || "https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST", headers: { Authorization: `Bearer ${settings.openaiApiKey}` }, body: form
     });
     const body = await response.text();
     if (!response.ok) throw this.apiError("OpenAI", response.status, body);
@@ -315,11 +327,10 @@ export class TranscriptionManager {
         if (vocabulary.length) parameters.vocabulary = Object.fromEntries(vocabulary.map((text) => [text, 5]));
       }
       if (model === "qwen-audio-3.1-asr-flash") parameters.keep_dialect = true;
-      response = await fetch("https://maas.qianwenaiapi.com/api/v1/services/aigc/multimodal-generation/generation", {
+      response = await this.fetchOnline(job, "https://maas.qianwenaiapi.com/api/v1/services/aigc/multimodal-generation/generation", {
         method: "POST",
         headers: { Authorization: `Bearer ${settings.alibabaApiKey}`, "Content-Type": "application/json", "X-DashScope-SSE": "disable" },
-        body: JSON.stringify({ model, input: { messages }, parameters }),
-        signal: job.abortController.signal
+        body: JSON.stringify({ model, input: { messages }, parameters })
       });
       const body = await response.text();
       if (!response.ok) throw this.apiError("千问 API 平台", response.status, body);
@@ -334,11 +345,10 @@ export class TranscriptionManager {
     // with InternalError.Algo.InvalidParameter. The glossary remains available
     // to OpenAI and Tencent, whose APIs support contextual hints.
     const asrOptions = job.language === "auto" ? { enable_itn: true } : { language: job.language, enable_itn: true };
-    response = await fetch(settings.alibabaEndpoint || "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions", {
+    response = await this.fetchOnline(job, settings.alibabaEndpoint || "https://maas.qianwenaiapi.com/compatible-mode/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${settings.alibabaApiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, stream: false, asr_options: asrOptions }),
-      signal: job.abortController.signal
+      body: JSON.stringify({ model, messages, stream: false, asr_options: asrOptions })
     });
     const body = await response.text();
     if (!response.ok) throw this.apiError("千问 API 平台", response.status, body);
@@ -360,13 +370,22 @@ export class TranscriptionManager {
     const taskId = createResponse?.Data?.TaskId;
     if (!taskId) throw new Error("腾讯云没有返回任务编号。");
     this.log(job, `腾讯云任务已提交，任务号：${taskId}`);
+    const waitStartedAt = Date.now();
+    let longWaitReported = false;
     while (!job.cancelled) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
       const checked = await this.tencentRequest(job, "DescribeTaskStatus", { TaskId: taskId });
       const response = checked.Response || {};
       if (response.Error) throw new Error(`腾讯云 API 错误：${response.Error.Message || "未知错误"}`);
       const data = response.Data || {};
-      if (data.Status === 0 || data.Status === 1) continue;
+      if (data.Status === 0 || data.Status === 1) {
+        if (!longWaitReported && Date.now() - waitStartedAt >= ONLINE_REQUEST_TIMEOUT_MS) {
+          longWaitReported = true;
+          job.stage = "腾讯云仍在处理，可继续等待或取消";
+          this.log(job, "腾讯云处理已超过 3 分钟；服务仍在正常返回处理中状态，因此不会自动终止或重复提交录音。");
+        }
+        continue;
+      }
       if (data.Status === 3) throw new Error(`腾讯云识别失败：${data.ErrorMsg || "未知错误"}`);
       const segments = Array.isArray(data.ResultDetail) ? data.ResultDetail.map((item) => ({ startMs: offsetMs + Number(item.StartMs || 0), endMs: offsetMs + Number(item.EndMs || 0), text: String(item.FinalSentence || "") })).filter((item) => item.text) : [];
       return { text: String(data.Result || ""), segments };
@@ -390,12 +409,30 @@ export class TranscriptionManager {
     const secretSigning = hmac(secretService, "tc3_request");
     const signature = crypto.createHmac("sha256", secretSigning).update(stringToSign, "utf8").digest("hex");
     const authorization = `TC3-HMAC-SHA256 Credential=${job.apiSettings.tencentSecretId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-    const response = await fetch(`https://${host}/`, {
-      method: "POST", headers: { Authorization: authorization, "Content-Type": "application/json; charset=utf-8", "X-TC-Action": action, "X-TC-Timestamp": String(timestamp), "X-TC-Version": "2019-06-14" }, body: payload, signal: job.abortController.signal
+    const response = await this.fetchOnline(job, `https://${host}/`, {
+      method: "POST", headers: { Authorization: authorization, "Content-Type": "application/json; charset=utf-8", "X-TC-Action": action, "X-TC-Timestamp": String(timestamp), "X-TC-Version": "2019-06-14" }, body: payload
     });
     const body = await response.text();
     if (!response.ok) throw this.apiError("腾讯云", response.status, body);
     return JSON.parse(body);
+  }
+
+  async fetchOnline(job, url, options) {
+    const timeoutSignal = AbortSignal.timeout(ONLINE_REQUEST_TIMEOUT_MS);
+    const signal = job.abortController?.signal
+      ? AbortSignal.any([job.abortController.signal, timeoutSignal])
+      : timeoutSignal;
+    try {
+      return await fetch(url, { ...options, signal });
+    } catch (error) {
+      if (job.cancelled || job.abortController?.signal.aborted) throw error;
+      if (timeoutSignal.aborted || error?.name === "TimeoutError") {
+        const timeoutError = new Error("在线转写服务连续 3 分钟没有返回响应；任务已保留，可检查网络后手动继续，程序不会自动重复提交以免重复计费。");
+        timeoutError.code = "ASR_REQUEST_TIMEOUT";
+        throw timeoutError;
+      }
+      throw error;
+    }
   }
 
   apiError(provider, status, body, prefix = "API 请求失败") {
@@ -413,8 +450,10 @@ export class TranscriptionManager {
       } catch (error) {
         if (job.cancelled || error?.name === "AbortError") throw error;
         const status = Number(error?.status || 0);
-        const transient = status === 408 || status === 409 || status === 425 || status === 429 || status >= 500 || error instanceof TypeError || ["ECONNRESET", "ETIMEDOUT", "EAI_AGAIN"].includes(error?.code);
-        if (!transient || attempt >= maxAttempts) throw error;
+        // A timeout or a 5xx response can happen after a paid ASR request has
+        // already reached the provider. Only an explicit rate-limit response
+        // is safe enough to resubmit automatically.
+        if (status !== 429 || attempt >= maxAttempts) throw error;
         const delay = Math.min(8000, 750 * 2 ** (attempt - 1)) + crypto.randomInt(0, 300);
         this.log(job, `第 ${attempt} 次调用遇到临时故障，${Math.round(delay / 100) / 10} 秒后自动重试。`);
         await new Promise((resolve, reject) => {

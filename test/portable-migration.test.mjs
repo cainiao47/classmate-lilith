@@ -4,6 +4,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { migratePortableData } from "../lib/portable-migration.mjs";
+import { SettingsStore } from "../settings-store.mjs";
+import { TranscriptionManager } from "../transcription-worker.mjs";
+import { TaskStore } from "../lib/task-store.mjs";
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "lilith-migration-"));
@@ -51,4 +54,46 @@ test("legacy-only settings migration keeps the original credentials file unchang
   await migratePortableData({ sourceRoot: old, destination: target });
   assert.equal(await fs.readFile(path.join(target, "settings.json"), "utf8"), legacy);
   assert.equal(await fs.readFile(path.join(old, "config", "api-settings.json"), "utf8"), legacy);
+});
+
+test("v0.21.1 projects, version snapshots and audio survive migration without copying runtime credentials or caches", async t => {
+  const { old, data, target } = await fixture(t);
+  const oldSettings = new SettingsStore({ file: path.join(data, "settings.json") });
+  await oldSettings.save({ deepseekApiKey: "migration-test-only-key", tencentAppId: "test-app" });
+  const beforeSettings = await fs.readFile(oldSettings.file);
+  await fs.mkdir(path.join(data, "webview2"));
+  await fs.writeFile(path.join(data, "webview2", "cache.json"), "not application JSON");
+  await fs.writeFile(path.join(data, ".launcher-token"), "old-runtime-shutdown-credential");
+  const oldManager = new TranscriptionManager({ appRoot: old, dataDir: data });
+  await oldManager.initialize();
+  const audioBytes = Buffer.from([0, 1, 2, 3, 240, 241]);
+  const upload = await oldManager.saveUpload((async function* () { yield audioBytes; })(), "lecture.webm");
+  const job = await oldManager.importLiveResult({ sourcePath: upload.filePath, originalName: "lecture.webm", engine: "alibaba", text: "保留限定条件及例证。", durationMs: 2000 });
+  const oldTasks = new TaskStore({ tasksDir: path.join(data, "tasks"), versionsDir: path.join(data, "versions"), transcriptionManager: oldManager });
+  const id = "task-legacy-project";
+  const project = { schemaVersion: 4, projectTitle: "自定义工程名称", title: "自定义工程名称", transcriptionDraft: job.result.text,
+    transcriptionMeta: { jobId: job.id, srt: job.result.srt }, proseMode: "detailed", proseStatus: "paused", prosePlan: "旧版全文结构", proseProtectedFacts: ["限定条件"], proseChunks: ["保留的书面段落"], reviewSourceHash: "old-review-hash" };
+  await oldTasks.save(id, project);
+  const version = await oldTasks.createVersion(id, { ...project, versionLabel: "人工保存版本" });
+
+  const record = await migratePortableData({ sourceRoot: old, destination: target });
+  assert.deepEqual(record.excludedRuntimeState, ["webview2", ".launcher-token"]);
+  await assert.rejects(fs.access(path.join(target, "webview2")));
+  await assert.rejects(fs.access(path.join(target, ".launcher-token")));
+  assert.deepEqual(await fs.readFile(path.join(target, "settings.json")), beforeSettings);
+  const loadedSettings = await new SettingsStore({ file: path.join(target, "settings.json") }).load();
+  assert.equal(loadedSettings.deepseekApiKey, "migration-test-only-key");
+  const newManager = new TranscriptionManager({ appRoot: old, dataDir: target });
+  await newManager.initialize();
+  const newTasks = new TaskStore({ tasksDir: path.join(target, "tasks"), versionsDir: path.join(target, "versions"), transcriptionManager: newManager });
+  const restored = await newTasks.get(id);
+  assert.equal(restored.projectTitle, project.projectTitle);
+  assert.equal(restored.prosePlan, project.prosePlan);
+  assert.deepEqual(restored.proseProtectedFacts, project.proseProtectedFacts);
+  assert.equal((await newTasks.getVersion(id, version.id)).versionLabel, "人工保存版本");
+  const migratedAudioPath = await newManager.audioPath(job.id);
+  assert.ok(migratedAudioPath.startsWith(target + path.sep));
+  assert.deepEqual(await fs.readFile(migratedAudioPath), audioBytes);
+  assert.deepEqual(await fs.readFile(upload.filePath), audioBytes);
+  assert.equal(await fs.readFile(path.join(data, ".launcher-token"), "utf8"), "old-runtime-shutdown-credential");
 });

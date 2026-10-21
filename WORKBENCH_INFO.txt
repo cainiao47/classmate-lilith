@@ -1,6 +1,6 @@
 Classmate Lilith
 Version: 0.22.0
-Release status: Unreleased development source; upstream reconciliation pending
+Release status: Local Windows installer; not published to GitHub
 Mode: Online transcription only
 
 Transcription providers:

@@ -25,11 +25,13 @@ Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线
 | Windows 10/11 x64 便携版 | `Classmate-Lilith-Windows-x64.zip` | 解压后双击 `Classmate Lilith.exe`，无需安装 |
 | macOS 13+ Apple Silicon | [v0.21.1 下载页](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.21.1) | 本轮保留 GitHub 现有版本，首次启动需手动放行 |
 
-Windows 安装与覆盖升级详见 [Windows 安装说明](docs/WINDOWS_INSTALL.md)。安装版将用户数据独立保存，升级和卸载均保留数据；首次安装可以从旧便携版复制并校验数据。
+Windows 安装与覆盖升级详见 [Windows 安装说明](docs/WINDOWS_INSTALL.md)。安装版将用户数据独立保存，升级保留数据；卸载时显示数据路径，可手动选择保留或经二次确认后删除。首次安装可以从旧便携版复制并校验数据。
 
-发布状态（2026-10-21 核对）：GitHub 最新正式版为 **v0.21.1**。上表 Windows 安装版属于尚未发布的 v0.22.0 开发计划，当前正式发布页尚无安装器。本地源码还需合并 GitHub 后续改动并重新验证；此前本机构建的 v0.18.0 安装包不是最新版，不应用于覆盖现有 v0.21.1。详见 [版本核对记录](docs/VERSION_AUDIT.md)。
+发布状态（2026-10-21 核对）：GitHub 最新正式版为 **v0.21.1**。本地 **v0.22.0 Windows 安装版**已合并该版本源码与本轮安装、更新及讲座整理功能，尚未上传 GitHub；正式发布页目前仍没有 EXE 安装器。请使用本轮重新构建的 `Classmate-Lilith-Setup-0.22.0.exe`，不要使用此前误编号的本地 v0.18.0 包。详见 [版本核对记录](docs/VERSION_AUDIT.md)。
 
 macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次运行时请按 [macOS 安装说明](docs/MACOS_INSTALL.md) 操作。Intel Mac 暂未提供预编译包。
+
+Windows 版使用 WebView2独立应用窗口；Windows 11 已包含对应运行时，绝大多数 Windows 10 设备也已安装。若极少数电脑缺少 WebView2 Runtime，应用会明确提示，并保留使用系统浏览器打开的临时入口。
 
 ## 主要功能
 
@@ -49,11 +51,16 @@ macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次�
 - 新任务默认使用学术讲座整理稿，按主题成章、逐段原文核对，并改进 Markdown 与 Word 导出。
 - macOS 本轮不构建或更新，下载继续使用 GitHub 已发布的 v0.21.1。
 
+### 0.21.1（GitHub 已发布）
+
+- Windows 改为 WebView2独立窗口，并保留系统托盘、完整退出和缺少运行时时的浏览器回退入口。
+- Windows 与 macOS 原生窗口统一采用暖色标题栏、莉莉丝品牌启动页和更清晰的启动/错误状态。
+- 原创代码以 0BSD 开放，原创美术和文档以 CC0 1.0 开放；发布包同时携带项目与第三方许可证。
+
 ### 0.17.0
 
 - macOS 改为带 Dock 图标的独立原生窗口，工作台直接在应用内显示，不再依赖外部浏览器。
 - 增加原生启动状态、错误重试、文件选择、导出保存和麦克风权限处理；菜单栏入口继续保留。
-- Windows 功能保持不变。
 
 ### 0.16.0
 
@@ -81,6 +88,7 @@ macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次�
 ## Windows 使用
 
 1. 安装版先运行 EXE 安装器，再从快捷方式启动；便携版双击 `Classmate Lilith.exe`。
+   工作台在独立窗口中打开；关闭窗口会缩到系统托盘，可通过托盘菜单重新显示或彻底退出。
 2. 在“设置”中选择在线转写服务并保存对应凭据。
 3. 选择录音或视频、语言和在线服务，然后开始转写。
 4. 人工修改原始转写稿，再送入校订。
@@ -113,6 +121,12 @@ npm test
 
 构建说明见 [Windows 发布脚本](distribution/build-windows-base.ps1)、[macOS 发布脚本](distribution/build-macos-arm64.sh) 与 [macOS 验证清单](docs/MACOS_VALIDATION.md)。
 
-## 许可证状态
+## 开放许可
 
-当前尚未选择正式的开源许可证。公开源代码用于审阅、测试和协作准备，不自动授予复制、修改或再分发权。莉莉丝人物图、应用图标、背景图和项目品牌也暂未授权复用；代码与美术资源的许可证将在正式发布前分别确定。
+Classmate Lilith 是一项以生成式 AI 辅助开发为主的开放项目。在相关权利存在且由项目维护者持有的范围内：
+
+- 原创程序代码采用 [0BSD License](LICENSE)，允许自由使用、复制、修改、商业使用和再分发，且不强制署名。
+- 原创美术资源与项目文档采用 [CC0 1.0 Universal](ASSETS_LICENSE.md)，在法律允许范围内贡献至公共领域。
+- Node.js、FFmpeg、LAME、`ws` 等第三方组件继续遵循各自的许可证，详见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。
+
+许可证只能授予项目维护者实际拥有或有权授予的权利，不改变任何第三方材料的授权条件。

@@ -29,7 +29,14 @@ function Start-TestServer {
   $script:serverProcess = Start-Process -FilePath (Join-Path $app 'runtime\node\node.exe') -ArgumentList 'server.mjs' -WorkingDirectory $app -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $testRoot 'server-out.txt') -RedirectStandardError (Join-Path $testRoot 'server-error.txt')
   for ($attempt=0; $attempt -lt 60; $attempt++) {
     if ($serverProcess.HasExited) { throw '测试服务启动失败。' }
-    try { $health = $web.DownloadString("http://127.0.0.1:$port/api/health") | ConvertFrom-Json; if ($health.app -eq 'classmate-lilith') { return } } catch { }
+    try {
+      $health = $web.DownloadString("http://127.0.0.1:$port/api/health") | ConvertFrom-Json
+      if ($health.app -eq 'classmate-lilith') {
+        $web.DownloadString("http://127.0.0.1:$port/") | Out-Null
+        $web.Headers['Cookie'] = ($web.ResponseHeaders['Set-Cookie'] -split ';')[0]
+        return
+      }
+    } catch { }
     Start-Sleep -Milliseconds 100
   }
   throw '测试服务启动超时。'

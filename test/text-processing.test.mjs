@@ -26,9 +26,9 @@ test("model parsers recover JSON surrounded by explanatory text", () => {
 });
 
 test("rewrite plan parser preserves outline and protected facts", () => {
-  assert.deepEqual(parseRewritePlanJson('{"outline":"一、问题；二、论证","protected_facts":["1998 年","【待确认】"]}'), {
+  assert.deepEqual(parseRewritePlanJson('{"outline":"一、问题；二、论证","protected_facts":["1998 年","⟦存疑⟧"]}'), {
     outline: "一、问题；二、论证",
-    protected_facts: ["1998 年", "【待确认】"]
+    protected_facts: ["1998 年", "⟦存疑⟧"]
   });
 });
 

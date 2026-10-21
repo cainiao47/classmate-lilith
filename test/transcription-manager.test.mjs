@@ -3,7 +3,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { TranscriptionManager } from "../transcription-worker.mjs";
+import { ONLINE_REQUEST_TIMEOUT_MS, TranscriptionManager } from "../transcription-worker.mjs";
+
+test("online transcription allows three minutes for each provider response", () => {
+  assert.equal(ONLINE_REQUEST_TIMEOUT_MS, 180_000);
+});
 
 test("transcription manager accepts only online providers", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "lilith-online-asr-"));
@@ -41,15 +45,15 @@ test("realtime result becomes a durable transcription job with playable audio an
   await assert.rejects(fs.access(recording));
 });
 
-test("online transcription retries transient provider failures", async () => {
+test("online transcription retries only explicit rate limits", async () => {
   const manager = new TranscriptionManager({ appRoot: process.cwd(), dataDir: process.cwd() });
   const job = { cancelled: false, logs: [], abortController: new AbortController() };
   let attempts = 0;
   const result = await manager.withTransientRetry(job, async () => {
     attempts += 1;
     if (attempts === 1) {
-      const error = new Error("temporary outage");
-      error.status = 503;
+      const error = new Error("rate limited");
+      error.status = 429;
       throw error;
     }
     return { text: "恢复成功", segments: [] };
@@ -57,6 +61,19 @@ test("online transcription retries transient provider failures", async () => {
   assert.equal(attempts, 2);
   assert.equal(result.text, "恢复成功");
   assert.match(job.logs.join("\n"), /自动重试/);
+});
+
+test("online transcription does not resubmit ambiguous provider failures", async () => {
+  const manager = new TranscriptionManager({ appRoot: process.cwd(), dataDir: process.cwd() });
+  const job = { cancelled: false, logs: [], abortController: new AbortController() };
+  let attempts = 0;
+  await assert.rejects(() => manager.withTransientRetry(job, async () => {
+    attempts += 1;
+    const error = new Error("provider failed after accepting the request");
+    error.status = 503;
+    throw error;
+  }), /provider failed/);
+  assert.equal(attempts, 1);
 });
 
 test("Alibaba file transcription sends the selected dialect model and glossary vocabulary", async (t) => {

@@ -7,6 +7,8 @@ import { freshState, restoreTaskState, TASK_SCHEMA_VERSION } from "../public/mod
 import { DEFAULT_SHORTCUTS } from "../public/modules/shortcuts.js";
 import { ONLINE_TRANSCRIPTION_PROVIDERS, configuredProviderCount, preferredOnlineProvider, providerConfigured } from "../public/modules/online-providers.js";
 import { assembleLecture, proseMarkdown, prosePlainText } from "../public/modules/prose-format.js";
+import { createSaveQueue } from "../public/modules/save-queue.js";
+import { readNdjson } from "../public/modules/ndjson-stream.js";
 
 test("page initialization binds history and all export buttons and loads online settings", async () => {
   const source = (await fs.readFile(new URL("../public/app.js", import.meta.url), "utf8")).replace(/^import .*;\r?\n/gm, "");
@@ -22,7 +24,7 @@ test("page initialization binds history and all export buttons and loads online 
     assembleLecture, proseMarkdown, prosePlainText,
     initWindowsUpdates() {},
     ONLINE_TRANSCRIPTION_PROVIDERS, configuredProviderCount, preferredOnlineProvider, providerConfigured,
-    combineGlossary: () => "", setTimeout: () => 1, clearTimeout() {},
+    combineGlossary: () => "", createSaveQueue, readNdjson, setTimeout: () => 1, clearTimeout() {},
     document: {
       querySelector(selector) {
         if (selector === "[data-prose-export]") return exports[0];
@@ -57,7 +59,7 @@ test("page initialization binds history and all export buttons and loads online 
   assert.equal(vm.runInContext("state.proseUsage.total_tokens", context), 15);
   assert.equal(vm.runInContext("JSON.stringify(taskData().proseLecturePlan)", context), JSON.stringify(plan));
   context.response = new Response(JSON.stringify({ type: "stage", stage: "还未完成" }) + "\n");
-  await assert.rejects(vm.runInContext("consumeProse(response)", context), /整理连接中断/);
+  await assert.rejects(vm.runInContext("consumeProse(response)", context), /连接提前结束/);
 
   const writes = [];
   context.fetch = (url, options) => new Promise(resolve => { writes.push({ url, body: JSON.parse(options.body), resolve }); });

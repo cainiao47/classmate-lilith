@@ -10,6 +10,16 @@
 #ifndef BuildCompression
   #define BuildCompression "lzma2"
 #endif
+#ifdef TestUserDataRoot
+  #ifndef UninstallTestBuild
+    #error TestUserDataRoot requires UninstallTestBuild
+  #endif
+#endif
+#ifdef UninstallTestBuild
+  #ifndef TestUserDataRoot
+    #error UninstallTestBuild requires an isolated TestUserDataRoot
+  #endif
+#endif
 
 [Setup]
 AppId={{63217C39-F1A7-48D1-9BC3-366859B24099}
@@ -61,6 +71,16 @@ var
   MigrationPage: TWizardPage;
   MigrationEdit: TNewEdit;
   MigrationFailed: Boolean;
+  DeleteUserData: Boolean;
+
+function UserDataRoot: String;
+begin
+#ifdef UninstallTestBuild
+  Result := ExpandConstant('{#TestUserDataRoot}');
+#else
+  Result := ExpandConstant('{localappdata}\Classmate Lilith');
+#endif
+end;
 
 function ServiceRunning: Boolean;
 var Request: Variant;
@@ -84,9 +104,67 @@ begin
 end;
 
 function InitializeUninstall: Boolean;
+var Choice: Integer; Description: String;
 begin
+  DeleteUserData := False;
   Result := not ServiceRunning;
-  if not Result then MsgBox('请先保存任务，并在系统托盘退出 Classmate Lilith。', mbInformation, MB_OK);
+  if not Result then
+  begin
+    if not UninstallSilent then MsgBox('请先保存任务，并在系统托盘退出 Classmate Lilith。', mbInformation, MB_OK);
+    Exit;
+  end;
+#ifdef UninstallTestBuild
+  { Only the isolated test binary has this hook; it is absent in release builds. }
+  Description := ExpandConstant('{param:TESTCHOICE|keep}');
+  if Description = 'delete' then DeleteUserData := True
+  else if Description = 'cancel' then Result := False;
+  Exit;
+#endif
+  { Silent uninstall and upgrade tooling always preserve data. }
+  if UninstallSilent then Exit;
+  Description := '用户数据目录：'#13#10 + UserDataRoot + '\data'#13#10#13#10 +
+    '日志、窗口缓存及更新备份目录：'#13#10 + UserDataRoot + #13#10#13#10 +
+    '保留数据：以后重装可继续使用设置、术语、工程、人工版本和录音。'#13#10 +
+    '删除数据：永久删除上述目录中的设置、API 配置、工程、录音、缓存、日志及更新备份。'#13#10 +
+    '不会删除旧便携版目录或你另外制作的备份。';
+  Choice := TaskDialogMsgBox('卸载 Classmate Lilith 后，是否保留用户数据？', Description,
+    mbConfirmation, MB_YESNOCANCEL, ['卸载并保留数据（推荐）', '卸载并删除数据', '取消卸载'], 0);
+  Result := (Choice = IDYES) or (Choice = IDNO);
+  if Choice = IDNO then
+  begin
+    Result := MsgBox('确认永久删除以下目录及其中的全部用户数据？此操作不可撤销。'#13#10#13#10 +
+      UserDataRoot + #13#10#13#10 + '请确认需要保留的数据已有独立备份。',
+      mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+    DeleteUserData := Result;
+  end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var DataPath: String;
+begin
+  if CurUninstallStep <> usPostUninstall then Exit;
+  DataPath := UserDataRoot;
+  if not DeleteUserData then
+  begin
+    Log('用户数据已保留：' + DataPath);
+    Exit;
+  end;
+  { Release builds have one fixed per-user target, never the program folder, a drive root,
+    the old portable folder, or an arbitrary command-line path. DelTree removes
+    reparse points without following their targets. }
+#ifndef UninstallTestBuild
+  if CompareText(ExpandFileName(DataPath), ExpandFileName(ExpandConstant('{localappdata}\Classmate Lilith'))) <> 0 then
+    RaiseException('数据目录校验失败，未删除用户数据。');
+#endif
+  if DirExists(DataPath) then
+    if not DelTree(DataPath, True, True, True) then
+    begin
+      Log('部分用户数据未能删除：' + DataPath);
+      if not UninstallSilent then MsgBox('程序已卸载，但部分数据仍被占用，未能完全删除。请检查：'#13#10 + DataPath,
+        mbInformation, MB_OK);
+      Exit;
+    end;
+  Log('已按用户选择删除数据：' + DataPath);
 end;
 
 procedure BrowseOldApp(Sender: TObject);

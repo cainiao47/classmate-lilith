@@ -5,8 +5,7 @@ import WebKit
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private let workspaceURL = URL(string: "http://127.0.0.1:4178")!
-    private let healthURL = URL(string: "http://127.0.0.1:4178/api/health")!
-    private let launchToken = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    private lazy var launchToken = loadOrCreateLaunchToken()
     private var mainWindow: NSWindow!
     private var webView: WKWebView!
     private var statusContainer: NSView!
@@ -21,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var startupAttempts = 0
     private var healthCheckInFlight = false
     private var isQuitting = false
+    private var quitFinished = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -65,6 +65,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             .appendingPathComponent("Classmate Lilith", isDirectory: true)
     }
 
+    private var healthURL: URL {
+        var components = URLComponents(string: "http://127.0.0.1:4178/api/health")!
+        components.queryItems = [URLQueryItem(name: "root", value: appRoot.path)]
+        return components.url!
+    }
+
+    private func loadOrCreateLaunchToken() -> String {
+        let file = dataDirectory.appendingPathComponent(".launcher-token")
+        try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+        if let existing = try? String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines), existing.count >= 20 {
+            return existing
+        }
+        let created = UUID().uuidString.replacingOccurrences(of: "-", with: "") + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        try? created.write(to: file, atomically: true, encoding: .utf8)
+        return created
+    }
+
     private func configureApplicationMenu() {
         let menu = NSMenu()
         let appItem = NSMenuItem()
@@ -104,6 +121,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         mainWindow.setFrameAutosaveName("ClassmateLilithMainWindow")
         mainWindow.isReleasedWhenClosed = false
         mainWindow.delegate = self
+        mainWindow.titlebarAppearsTransparent = true
+        mainWindow.titlebarSeparatorStyle = .none
+        mainWindow.backgroundColor = NSColor(calibratedRed: 0.969, green: 0.941, blue: 0.898, alpha: 1)
+        mainWindow.isMovableByWindowBackground = true
         mainWindow.center()
 
         let root = NSView(frame: frame)
@@ -121,11 +142,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
         let visual = NSVisualEffectView(frame: root.bounds)
         visual.autoresizingMask = [.width, .height]
-        visual.material = .windowBackground
+        visual.material = .underWindowBackground
         visual.blendingMode = .behindWindow
         visual.state = .active
+        visual.wantsLayer = true
+        visual.layer?.backgroundColor = NSColor(calibratedRed: 0.969, green: 0.941, blue: 0.898, alpha: 0.9).cgColor
         statusContainer = visual
         root.addSubview(statusContainer)
+
+        let brandIcon = NSImageView()
+        brandIcon.image = NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+        brandIcon.imageScaling = .scaleProportionallyUpOrDown
+        brandIcon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            brandIcon.widthAnchor.constraint(equalToConstant: 82),
+            brandIcon.heightAnchor.constraint(equalToConstant: 82)
+        ])
 
         statusSpinner = NSProgressIndicator()
         statusSpinner.style = .spinning
@@ -133,11 +165,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
         statusTitle = NSTextField(labelWithString: "正在启动 Classmate Lilith")
         statusTitle.font = NSFont.systemFont(ofSize: 22, weight: .semibold)
+        statusTitle.textColor = NSColor(calibratedRed: 0.357, green: 0.224, blue: 0.157, alpha: 1)
         statusTitle.alignment = .center
 
         statusDetail = NSTextField(wrappingLabelWithString: "正在准备本地工作台，请稍候……")
         statusDetail.font = NSFont.systemFont(ofSize: 13)
-        statusDetail.textColor = .secondaryLabelColor
+        statusDetail.textColor = NSColor(calibratedRed: 0.475, green: 0.396, blue: 0.345, alpha: 1)
         statusDetail.alignment = .center
         statusDetail.maximumNumberOfLines = 4
         statusDetail.preferredMaxLayoutWidth = 560
@@ -155,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         buttons.alignment = .centerY
         buttons.spacing = 10
 
-        let stack = NSStackView(views: [statusSpinner, statusTitle, statusDetail, buttons])
+        let stack = NSStackView(views: [brandIcon, statusSpinner, statusTitle, statusDetail, buttons])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 14
@@ -323,7 +356,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         session().dataTask(with: healthURL) { data, response, _ in
             let http = response as? HTTPURLResponse
             let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-            let healthy = http?.statusCode == 200 && body.contains("\"app\":\"classmate-lilith\"")
+            let healthy = http?.statusCode == 200
+                && body.contains("\"app\":\"classmate-lilith\"")
+                && body.contains("\"matchesRoot\":true")
             DispatchQueue.main.async { completion(healthy) }
         }.resume()
     }
@@ -365,12 +400,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         request.httpMethod = "POST"
         request.setValue(launchToken, forHTTPHeaderField: "X-Launcher-Token")
         session().dataTask(with: request) { [weak self] _, _, _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { self?.finishQuit() }
+            DispatchQueue.main.async { self?.waitForServerToStop() }
         }.resume()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in self?.finishQuit() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.6) { [weak self] in self?.finishQuit() }
+    }
+
+    private func waitForServerToStop(attempt: Int = 0) {
+        checkServiceHealth { [weak self] healthy in
+            guard let self else { return }
+            if !healthy || attempt >= 25 {
+                self.finishQuit()
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.waitForServerToStop(attempt: attempt + 1) }
+            }
+        }
     }
 
     private func finishQuit() {
+        if quitFinished { return }
+        quitFinished = true
         if let process = serverProcess, process.isRunning { process.terminate() }
         NSApp.terminate(nil)
     }
