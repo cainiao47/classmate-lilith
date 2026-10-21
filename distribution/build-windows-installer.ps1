@@ -16,7 +16,7 @@ if (-not $InnoCompiler) {
   $InnoCompiler = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 }
 if (-not $InnoCompiler -or -not (Test-Path -LiteralPath $InnoCompiler)) { throw '请安装 Inno Setup，或通过 -InnoCompiler 指定 ISCC.exe。' }
-foreach ($file in @('Classmate Lilith.exe','UpdateHelper.exe','runtime\node\node.exe','distribution\windows-update-public.pem')) {
+foreach ($file in @('Classmate Lilith.exe','Classmate Lilith.exe.config','UpdateHelper.exe','UpdateHelper.exe.config','runtime\node\node.exe','distribution\windows-update-public.pem')) {
   if (-not (Test-Path -LiteralPath (Join-Path $package $file))) { throw "安装文件不完整：$file" }
 }
 New-Item -ItemType Directory -Force -Path $output | Out-Null

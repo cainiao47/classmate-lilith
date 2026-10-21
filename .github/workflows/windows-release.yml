@@ -80,6 +80,9 @@ jobs:
       - name: Verify native launcher Documents paths
         shell: pwsh
         run: .\distribution\test-windows-launcher-storage.ps1 -PackageRoot (Join-Path $PWD 'dist\Classmate-Lilith-Windows-x64')
+      - name: Verify native DPI mode and WebView raster scale
+        shell: pwsh
+        run: .\distribution\test-windows-dpi.ps1 -PackageRoot (Join-Path $PWD 'dist\Classmate-Lilith-Windows-x64')
       - name: Verify uninstall choices and independent backup protection
         shell: pwsh
         run: .\distribution\test-windows-uninstall.ps1 -InnoCompiler $env:INNO_COMPILER

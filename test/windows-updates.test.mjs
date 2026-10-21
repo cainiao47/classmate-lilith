@@ -75,7 +75,9 @@ test("busy, unsaved and portable sessions cannot install an update", async t => 
 
 test("install handoff waits for helper readiness and keeps user metadata and programs backed up", async t => {
   let launched = 0;
-  const { updater, dataDir } = await fixture(t, { launch: async (file, args) => { launched++; assert.equal(args[7], version); await fs.writeFile(args[6], "ready"); } });
+  const config = '<configuration>test-only DPI configuration</configuration>';
+  const { updater, dataDir } = await fixture(t, { launch: async (file, args) => { launched++; assert.equal(args[7], version); assert.equal(await fs.readFile(`${file}.config`, "utf8"), config); await fs.writeFile(args[6], "ready"); } });
+  await fs.writeFile(path.join(updater.root, "UpdateHelper.exe.config"), config);
   await updater.check(); await updater.download(); await updater.pendingDownload;
   const result = await updater.apply({ launcherPid: 123 });
   assert.equal(result.installing, true); assert.equal(launched, 1);

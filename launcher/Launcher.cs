@@ -22,6 +22,10 @@ namespace ClassmateLilithLauncher
         [STAThread]
         static void Main()
         {
+            // WinForms reads PerMonitorV2 from the shipped EXE configuration
+            // before any controls or native windows are created.
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += delegate(object sender, ThreadExceptionEventArgs args) { ReportFailure(args.Exception); };
             AppDomain.CurrentDomain.UnhandledException += delegate(object sender, UnhandledExceptionEventArgs args) { ReportFailure(args.ExceptionObject as Exception); };
@@ -37,8 +41,6 @@ namespace ClassmateLilithLauncher
                     SignalExistingWindow();
                     return;
                 }
-                Application.EnableVisualStyles();
-                Application.SetCompatibleTextRenderingDefault(false);
                 Application.Run(new TrayContext(ReopenEventName));
                 GC.KeepAlive(singleInstance);
             }
@@ -130,7 +132,10 @@ namespace ClassmateLilithLauncher
 
         internal WorkspaceForm(string root)
         {
+            SuspendLayout();
             baseDir = root;
+            AutoScaleDimensions = new SizeF(96F, 96F);
+            AutoScaleMode = AutoScaleMode.Dpi;
             Text = "Classmate Lilith";
             Icon = LoadAppIcon(root);
             StartPosition = FormStartPosition.CenterScreen;
@@ -230,6 +235,35 @@ namespace ClassmateLilithLauncher
 
             FormClosing += OnFormClosing;
             Shown += delegate { ApplyWindowStyle(); };
+            Load += delegate { FitToWorkingArea(true); };
+            ResumeLayout(true);
+        }
+
+        internal static Rectangle ConstrainToWorkingArea(Rectangle bounds, Rectangle area)
+        {
+            int width = Math.Min(bounds.Width, area.Width);
+            int height = Math.Min(bounds.Height, area.Height);
+            return new Rectangle(Math.Max(area.Left, Math.Min(bounds.Left, area.Right - width)),
+                Math.Max(area.Top, Math.Min(bounds.Top, area.Bottom - height)), width, height);
+        }
+
+        private void FitToWorkingArea(bool center)
+        {
+            Rectangle area = Screen.FromControl(this).WorkingArea;
+            float scale = DeviceDpi / 96F;
+            MinimumSize = new Size(Math.Min((int)Math.Round(940 * scale), area.Width), Math.Min((int)Math.Round(680 * scale), area.Height));
+            if (WindowState != FormWindowState.Normal) return;
+            Rectangle bounds = ConstrainToWorkingArea(Bounds, area);
+            if (center) bounds.Location = new Point(area.Left + (area.Width - bounds.Width) / 2, area.Top + (area.Height - bounds.Height) / 2);
+            Bounds = bounds;
+        }
+
+        protected override void OnDpiChanged(DpiChangedEventArgs e)
+        {
+            base.OnDpiChanged(e);
+            // Let WinForms and the WebView2 wrapper complete their normal DPI
+            // resize first; do not emulate DPI with page zoom or CSS transforms.
+            if (IsHandleCreated) BeginInvoke(new MethodInvoker(delegate { if (!IsDisposed) FitToWorkingArea(false); }));
         }
 
         private static Icon LoadAppIcon(string root)

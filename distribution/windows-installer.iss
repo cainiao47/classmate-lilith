@@ -114,6 +114,11 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
+  if not IsDotNetInstalled(net472, 0) then
+  begin
+    Result := '高清显示适配需要 Microsoft .NET Framework 4.7.2 或更新版本。请先安装微软官方运行时，再重新运行安装包。';
+    Exit;
+  end;
   if ServiceRunning then Result := '请先保存任务，并在系统托盘选择“退出并停止服务”，然后重试安装。安装器不会强制结束录音或转写。';
 end;
 

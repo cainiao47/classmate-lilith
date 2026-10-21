@@ -21,6 +21,7 @@ using System.Reflection;
 [assembly: AssemblyVersion("$applicationVersion.0")]
 [assembly: AssemblyFileVersion("$applicationVersion.0")]
 [assembly: AssemblyInformationalVersion("$applicationVersion")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETFramework,Version=v4.7.2", FrameworkDisplayName = ".NET Framework 4.7.2")]
 "@ | Set-Content -LiteralPath $versionInfo -Encoding utf8
 if (-not (Test-Path -LiteralPath $packageFile)) {
     $url = "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$webView2Version/microsoft.web.webview2.$webView2Version.nupkg"
@@ -55,13 +56,16 @@ if (-not (Test-Path -LiteralPath $source)) {
     $source = Join-Path $PSScriptRoot "WorkbenchLauncher.cs"
 }
 $icon = Join-Path (Split-Path $PSScriptRoot -Parent) "assets\app.ico"
+$manifest = Join-Path $PSScriptRoot 'app.manifest'
+$configuration = Join-Path $PSScriptRoot 'app.config'
 $core = Join-Path $packageRoot 'lib\net462\Microsoft.Web.WebView2.Core.dll'
 $winForms = Join-Path $packageRoot 'lib\net462\Microsoft.Web.WebView2.WinForms.dll'
 $loader = Join-Path $packageRoot 'runtimes\win-x64\native\WebView2Loader.dll'
 $outputDirectory = Split-Path -Parent ([IO.Path]::GetFullPath($OutputPath))
 New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
-& $compiler /nologo /target:winexe /optimize+ "/out:$OutputPath" "/win32icon:$icon" /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll "/reference:$core" "/reference:$winForms" $source $versionInfo
+& $compiler /nologo /target:winexe /optimize+ "/out:$OutputPath" "/win32icon:$icon" "/win32manifest:$manifest" /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll "/reference:$core" "/reference:$winForms" $source $versionInfo
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Copy-Item -LiteralPath $configuration -Destination ($OutputPath + '.config') -Force
 Copy-Item -LiteralPath $core -Destination (Join-Path $outputDirectory 'Microsoft.Web.WebView2.Core.dll') -Force
 Copy-Item -LiteralPath $winForms -Destination (Join-Path $outputDirectory 'Microsoft.Web.WebView2.WinForms.dll') -Force
 Copy-Item -LiteralPath $loader -Destination (Join-Path $outputDirectory 'WebView2Loader.dll') -Force
@@ -69,6 +73,7 @@ Copy-Item -LiteralPath (Join-Path $packageRoot 'LICENSE.txt') -Destination (Join
 Write-Output "Built: $OutputPath"
 $updateSource = Join-Path $PSScriptRoot 'UpdateHelper.cs'
 $updateOutput = Join-Path (Split-Path -Parent $OutputPath) 'UpdateHelper.exe'
-& $compiler /nologo /target:winexe /optimize+ "/out:$updateOutput" /reference:System.dll /reference:System.Windows.Forms.dll $updateSource $versionInfo
+& $compiler /nologo /target:winexe /optimize+ "/out:$updateOutput" "/win32manifest:$manifest" /reference:System.dll /reference:System.Windows.Forms.dll $updateSource $versionInfo
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Copy-Item -LiteralPath $configuration -Destination ($updateOutput + '.config') -Force
 Write-Output "Built: $updateOutput"

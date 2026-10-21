@@ -2,11 +2,15 @@
 
 ## 当前发布状态
 
-截至 2026-10-21，GitHub 最新正式版为 v0.21.1（便携版）。本地 v0.22.1 已合并该版源码及本轮新增功能，提供重新构建的 Windows 安装器，但尚未上传 GitHub。此前误编号的本地 v0.18.0 包不应用于覆盖 v0.21.1，也不能只改文件名当作新版。版本对应关系见 [版本核对记录](VERSION_AUDIT.md)。
+截至 2026-10-21，GitHub 最新正式版为 v0.21.1（便携版）。本地 v0.22.2 已合并该版源码及本轮新增功能，提供重新构建的 Windows 安装器，但尚未上传 GitHub。此前误编号的本地 v0.18.0 包不应用于覆盖 v0.21.1，也不能只改文件名当作新版。版本对应关系见 [版本核对记录](VERSION_AUDIT.md)。
 
 ## 安装版
 
 下载 `Classmate-Lilith-Setup-版本号.exe`，按照向导安装。默认安装到当前用户的 `%LOCALAPPDATA%\Programs\Classmate Lilith`，无需管理员权限。可以创建开始菜单和桌面快捷方式。
+
+v0.22.2 起需要 .NET Framework 4.7.2 或更新版本，以启用 WinForms 的 PerMonitorV2 高清缩放；安装器会检查依赖，缺少时明确提示，不会自动改动系统运行时。原生窗口会按屏幕实际 DPI 渲染，移动到不同缩放的显示器时自动适配，不通过固定页面缩放模拟 DPI。无需降低 Windows 的正常缩放比例。
+
+`Classmate Lilith.exe.config` 与程序必须一起保留；更新助手的 `.config` 也会随助手一起复制。若曾手动设置 Windows“兼容性”的 DPI 缩放覆盖，建议先取消该覆盖再测试新版。网页页面缩放仍由用户自行调整，修复不会重置已有缩放偏好。
 
 安装版将设置、API 凭据、术语库、任务、人工版本和录音保存在系统“文档”中的 `Classmate Lilith\data`，日志保存在同级的 `logs`，更新缓存和备份保存在 `updates`。本机默认路径为 `C:\Users\Li\Documents\Classmate Lilith\data`。程序采用 Windows 的真实“文档”位置，不硬编码 C 盘；文档被重定向到 D 盘或 OneDrive 时也会跟随。
 

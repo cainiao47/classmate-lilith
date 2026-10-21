@@ -51,6 +51,8 @@ namespace ClassmateLilithUpdate
         [STAThread]
         static int Main(string[] args)
         {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
             string app = "", backup = "", log = "";
             bool installStarted = false;
             Process newLauncher = null;
