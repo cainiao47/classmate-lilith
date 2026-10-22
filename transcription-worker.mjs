@@ -113,7 +113,7 @@ export class TranscriptionManager {
     const resolvedSource = path.resolve(sourcePath);
     if (!resolvedSource.startsWith(`${uploadRoot}${path.sep}`) || !(await exists(resolvedSource))) throw new Error("没有找到实时录音文件。");
     const text = cleanText(input.text);
-    if (!text) throw new Error("实时转写稿为空，无法保存任务。");
+    // Preserve microphone audio even if online recognition produced no text.
     const segments = (Array.isArray(input.segments) ? input.segments : []).map((segment) => ({
       startMs: Math.max(0, Number(segment.startMs) || 0),
       endMs: Math.max(Number(segment.startMs) + 200, Number(segment.endMs) || 0),

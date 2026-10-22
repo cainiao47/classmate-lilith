@@ -75,6 +75,10 @@ static class WindowsDpiProbe
                 };
                 web.CoreWebView2.NavigateToString("<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><p style='font:16px sans-serif'>高清文字测试 DPI 125% 150% 200%</p>");
                 await navigation.Task;
+                await web.CoreWebView2.ExecuteScriptAsync("window.classmatePrepareExit=function(){window.classmateExitStatus='ready';};");
+                MethodInfo prepareExit = type.GetMethod("PrepareToExit", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (!await (Task<bool>)prepareExit.Invoke(form, null)) throw new Exception("Native save-before-exit handshake failed.");
+                Console.WriteLine("NativeSaveBeforeExitHandshake=True");
                 int screens = 0;
                 foreach (Screen screen in Screen.AllScreens)
                 {

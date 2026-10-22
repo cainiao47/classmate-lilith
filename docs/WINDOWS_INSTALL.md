@@ -2,7 +2,7 @@
 
 ## 当前发布状态
 
-Windows 正式版为 [v0.22.2](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.22.2)（2026-10-21），提供重新构建的 EXE 安装器、便携包、校验文件及签名更新清单，已合并 v0.21.1 源码及本轮新增功能。macOS 保持 v0.21.1。此前误编号的本地 v0.18.0 包不应用于覆盖 v0.21.1，也不能只改文件名当作新版。版本对应关系见 [版本核对记录](VERSION_AUDIT.md)。
+Windows 正式版为 [v0.23.1](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.23.1)（2026-10-22），提供从完整源码重新构建的 EXE 安装器、便携包、校验文件及签名更新清单，包含界面修订、录音恢复、搜索分页与回收站。macOS 保持 v0.21.1。本机先前的 v0.23.0 仅为阶段测试包，不应当作本次完整版本；不能只改旧文件名当作新版。版本对应关系见 [版本核对记录](VERSION_AUDIT.md)。
 
 ## 安装版
 

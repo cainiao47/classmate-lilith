@@ -9,22 +9,25 @@ import { ONLINE_TRANSCRIPTION_PROVIDERS, configuredProviderCount, preferredOnlin
 import { assembleLecture, proseMarkdown, prosePlainText } from "../public/modules/prose-format.js";
 import { createSaveQueue } from "../public/modules/save-queue.js";
 import { readNdjson } from "../public/modules/ndjson-stream.js";
+import { createWorkspaceGate, resultValidity } from "../public/modules/workspace-lifecycle.js";
 
 test("page initialization binds history and all export buttons and loads online settings", async () => {
   const source = (await fs.readFile(new URL("../public/app.js", import.meta.url), "utf8")).replace(/^import .*;\r?\n/gm, "");
   const elements = new Map();
   function element() {
     return { value: "", textContent: "", hidden: true, style: {}, dataset: {},
-      addEventListener() {}, classList: { add() {}, remove() {}, toggle() {} } };
+      addEventListener() {}, setAttribute() {}, classList: { add() {}, remove() {}, toggle() {} } };
   }
   const exports = ["txt", "md", "docx"].map(format => ({ ...element(), dataset: { proseExport: format } }));
   const requests = [];
   const context = vm.createContext({
-    crypto: webcrypto, freshState, restoreTaskState, TASK_SCHEMA_VERSION, DEFAULT_SHORTCUTS, TextDecoder,
+    crypto: webcrypto, freshState, restoreTaskState, TASK_SCHEMA_VERSION, DEFAULT_SHORTCUTS, TextDecoder, URLSearchParams,
     assembleLecture, proseMarkdown, prosePlainText,
     initWindowsUpdates() {},
     ONLINE_TRANSCRIPTION_PROVIDERS, configuredProviderCount, preferredOnlineProvider, providerConfigured,
-    combineGlossary: () => "", createSaveQueue, readNdjson, setTimeout: () => 1, clearTimeout() {},
+    combineGlossary: () => "", createSaveQueue, readNdjson, createWorkspaceGate, resultValidity,
+    createDialogFocus:()=>({open(){},close(){}}),renderDocumentPreview(){},
+    setTimeout: () => 1, clearTimeout() {},
     document: {
       querySelector(selector) {
         if (selector === "[data-prose-export]") return exports[0];
@@ -74,4 +77,36 @@ test("page initialization binds history and all export buttons and loads online 
   assert.equal(writes[1].body.workingText, "安装前最后的修改");
   writes[1].resolve({ ok: true }); await latestSave;
   assert.equal(vm.runInContext("savedRevision===taskRevision", context), true);
+
+  vm.runInContext('state.running=true',context);
+  const owner=vm.runInContext('state.taskId',context);
+  assert.equal(await vm.runInContext('newTask()',context),false);
+  assert.equal(vm.runInContext('state.taskId',context),owner);
+  vm.runInContext('state.running=false;state.projectTitle="固定工程名";resetResults()',context);
+  assert.equal(vm.runInContext('state.projectTitle',context),"固定工程名");
+  context.fetch=async()=>({ok:false});
+  vm.runInContext('state.workingText="不能丢失的修改"',context);
+  assert.equal(await vm.runInContext('newTask()',context),false);
+  assert.equal(vm.runInContext('state.workingText',context),"不能丢失的修改");
+  context.fetch=async()=>({ok:true});
+  vm.runInContext('globalThis.classmatePrepareExit()',context);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(context.classmateExitStatus,"ready");
+  assert.equal(vm.runInContext('workspaceChanging',context),true);
+  vm.runInContext('globalThis.classmateCancelExit();state.proseRunning=true;globalThis.classmatePrepareExit()',context);
+  assert.equal(context.classmateExitStatus,"blocked");
+  vm.runInContext('state.proseRunning=false',context);
+  let navigated="";
+  context.location={set href(value){assert.equal(vm.runInContext('workspaceChanging',context),false,"owned navigation must wait until the save gate releases");navigated=value}};
+  await elements.get("#liveTranscriptionButton").onclick({preventDefault(){}});
+  assert.match(navigated,/^\/live\.html\?returnTask=/);
+  let resolvePoll;
+  context.fetch=()=>new Promise(resolve=>resolvePoll=resolve);
+  const poll=vm.runInContext('activeTranscriptionId="job-old";state.transcriptionDraft="保留草稿";pollTranscription()',context);
+  vm.runInContext('activeTranscriptionId=null',context);
+  resolvePoll({ok:true,json:async()=>({status:"completed",result:{text:"迟到的结果"}})});await poll;
+  assert.equal(vm.runInContext('state.transcriptionDraft',context),"保留草稿");
+  context.fetch=async()=>{throw Error("temporary")};
+  await vm.runInContext('activeTranscriptionId="job-retry";pollTranscription()',context);
+  assert.equal(vm.runInContext('activeTranscriptionId',context),"job-retry");
 });

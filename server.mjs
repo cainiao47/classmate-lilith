@@ -19,6 +19,7 @@ import { WindowsUpdates } from "./lib/windows-updates.mjs";
 import { UpdateActivity } from "./lib/update-activity.mjs";
 import { pruneOrphanedTranscriptions } from "./lib/transcription-retention.mjs";
 import { TaskStore, validTaskId } from "./lib/task-store.mjs";
+import { LiveRecordingStore } from "./lib/live-recordings.mjs";
 import {
   locateUncertainties,
   openAiOutputText,
@@ -58,6 +59,7 @@ else if (recoveryRetention.removed) runtimeLog.info("recovery", `已清理 ${rec
 const transcriptionManager = new TranscriptionManager({ appRoot: ROOT, dataDir: DATA_DIR, runtimeLogger: runtimeLog });
 await transcriptionManager.initialize();
 const taskStore = new TaskStore({ tasksDir: TASKS_DIR, versionsDir: VERSIONS_DIR, transcriptionManager });
+const liveRecordings = new LiveRecordingStore({ directory: path.join(DATA_DIR, "live-recordings"), ffmpegPath: transcriptionManager.paths().ffmpeg });
 const transcriptionRetention = await pruneOrphanedTranscriptions({ dataDir: DATA_DIR, tasksDir: TASKS_DIR }).catch((error) => ({ error }));
 if (transcriptionRetention.error) runtimeLog.warn("transcription", `清理过期转写文件失败：${transcriptionRetention.error.message}`);
 else if (transcriptionRetention.skipped) runtimeLog.warn("transcription", `发现 ${transcriptionRetention.damagedTaskFiles} 个无法解析的历史任务；为保护录音，本次跳过自动清理`);
@@ -468,9 +470,14 @@ async function handleRewrite(req, res) {
   res.end();
 }
 
-async function handleTasksApi(req, res, pathname) {
+async function handleTasksApi(req, res, pathname, url) {
   try {
-    if (pathname === "/api/tasks" && req.method === "GET") return sendJson(res, 200, { tasks: await taskStore.list() });
+    if ((pathname === "/api/tasks" || pathname === "/api/tasks/trash") && req.method === "GET") {
+      return sendJson(res, 200, await taskStore.listPage({ query: url.searchParams.get("q"), page: url.searchParams.get("page"),
+        pageSize: url.searchParams.get("pageSize"), trash: pathname.endsWith("/trash") }));
+    }
+    const restore = pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_-]+)\/restore-deleted$/);
+    if (restore && req.method === "POST") return sendJson(res, 200, await taskStore.restoreDeleted(restore[1]));
     const match = pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_-]+)$/);
     if (!match || !validTaskId(match[1])) return sendJson(res, 400, { error: "任务编号无效。" });
     const id = match[1];
@@ -492,12 +499,40 @@ async function handleTasksApi(req, res, pathname) {
   }
 }
 
+async function handleLiveRecordings(req, res, pathname) {
+  try {
+    if (pathname === "/api/live-recordings") {
+      if (req.method === "GET") return sendJson(res, 200, { recordings: await liveRecordings.list() });
+      if (req.method === "POST") return sendJson(res, 201, await liveRecordings.create(await readJson(req)));
+    }
+    const match = pathname.match(/^\/api\/live-recordings\/(live-[a-f0-9-]{36})(?:\/(audio|complete|chunks\/(\d+)))?$/);
+    if (!match) return sendJson(res, 404, { error: "没有找到录音恢复接口。" });
+    const [, id, action, index] = match;
+    if (req.method === "GET" && action === "audio") return await streamLocalAudio(req, res, await liveRecordings.audioPath(id));
+    if (req.method === "GET" && !action) return sendJson(res, 200, await liveRecordings.get(id));
+    if (req.method === "PATCH" && !action) return sendJson(res, 200, await liveRecordings.checkpoint(id, await readJson(req)));
+    if (req.method === "POST" && action?.startsWith("chunks/")) return sendJson(res, 200, await liveRecordings.append(id, Number(index), req));
+    if (req.method === "POST" && action === "complete") {
+      const { taskId } = await readJson(req);
+      const task = await taskStore.get(taskId);
+      if (task.liveRecordingRecoveryId !== id || (!task.transcriptionMeta?.jobId && !task.sourceText)) return sendJson(res, 409, { error: "工程与恢复录音尚未关联，恢复点已保留。" });
+      if (task.transcriptionMeta?.jobId) await transcriptionManager.audioPath(task.transcriptionMeta.jobId);
+      return sendJson(res, 200, await liveRecordings.complete(id, taskId));
+    }
+    return sendJson(res, 405, { error: "Method not allowed" });
+  } catch (error) { return sendJson(res, error.code === "ENOENT" ? 404 : (error.statusCode || 400), { error: error.message || "录音恢复操作失败。" }); }
+}
+
 async function handleVersionsApi(req, res, pathname) {
   try {
     const listMatch = pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_-]+)\/versions$/);
     const itemMatch = pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_-]+)\/versions\/(version-[a-zA-Z0-9_-]+)$/);
-    const taskId = listMatch?.[1] || itemMatch?.[1];
+    const restoreMatch = pathname.match(/^\/api\/tasks\/([a-zA-Z0-9_-]+)\/versions\/(version-[a-zA-Z0-9_-]+)\/restore$/);
+    const taskId = listMatch?.[1] || itemMatch?.[1] || restoreMatch?.[1];
     if (!validTaskId(taskId)) return sendJson(res, 400, { error: "任务编号无效。" });
+    if (restoreMatch && req.method === "POST") {
+      return sendJson(res, 200, await taskStore.restoreVersion(taskId, restoreMatch[2]));
+    }
     if (listMatch && req.method === "GET") {
       return sendJson(res, 200, { versions: await taskStore.listVersions(taskId) });
     }
@@ -715,7 +750,8 @@ const server = http.createServer(async (req, res) => {
   if (pathname === "/api/logs" || pathname === "/api/logs/current") return handleRuntimeLogs(req, res, pathname, url);
   if (pathname === "/api/terminology" || pathname === "/api/terminology/terms") return handleTerminologyApi(req, res, pathname);
   if (pathname.includes("/versions")) return handleVersionsApi(req, res, pathname);
-  if (pathname === "/api/tasks" || pathname.startsWith("/api/tasks/")) return handleTasksApi(req, res, pathname);
+  if (pathname === "/api/tasks" || pathname.startsWith("/api/tasks/")) return handleTasksApi(req, res, pathname, url);
+  if (pathname === "/api/live-recordings" || pathname.startsWith("/api/live-recordings/")) return handleLiveRecordings(req, res, pathname);
   if (pathname.startsWith("/api/transcription/")) return handleTranscriptionApi(req, res, pathname, url);
   if (req.method === "GET") return serveStatic(req, res);
   sendJson(res, 405, { error: "Method not allowed" });

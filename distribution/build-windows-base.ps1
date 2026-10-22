@@ -44,7 +44,7 @@ foreach ($file in @('migrate-portable.mjs','windows-update-public.pem')) {
   Copy-Item -LiteralPath (Join-Path $source "distribution\$file") -Destination (Join-Path $target "distribution\$file") -Force
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $target 'docs') | Out-Null
-foreach ($file in @('WINDOWS_INSTALL.md','ACADEMIC_LECTURE.md','VERSION_AUDIT.md','RELEASE_0.22.2.md')) {
+foreach ($file in @('WINDOWS_INSTALL.md','ACADEMIC_LECTURE.md','VERSION_AUDIT.md','RELEASE_0.22.2.md','RELEASE_0.23.1.md','UX_IMPROVEMENTS.md')) {
   Copy-Item -LiteralPath (Join-Path $source "docs\$file") -Destination (Join-Path $target "docs\$file") -Force
 }
 $launcherBuild = Join-Path $source 'launcher\build.ps1'

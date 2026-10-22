@@ -7,6 +7,7 @@
   <title>Classmate Lilith · 课堂工作台</title>
   <link rel="icon" href="/favicon.ico?v=0.21.1" sizes="any">
   <link rel="stylesheet" href="/styles.css?v=0.21.1">
+  <link rel="stylesheet" href="/workspace.css?v=0.23.1">
 </head>
 <body>
   <div class="ambient ambient-one"></div>
@@ -22,8 +23,10 @@
       <div class="top-statuses">
         <span id="saveStatus" class="save-status">工程已自动保存</span>
       </div>
-      <button id="runtimeLogButton" class="header-button utility-action" type="button">运行日志</button>
-      <button id="windowsUpdateButton" class="header-button utility-action" type="button" hidden>检查更新</button>
+      <details class="utility-menu"><summary class="header-button">更多</summary><div>
+        <button id="runtimeLogButton" class="header-button utility-action" type="button">运行日志</button>
+        <button id="windowsUpdateButton" class="header-button utility-action" type="button" hidden>检查更新</button>
+      </div></details>
       <button id="apiSettingsButton" class="header-button settings-action" type="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8Z"/><path d="m19.4 15 .1 2.2-2.3 2.3-2.2-.1-1.5 1.6h-3L9 19.4l-2.2.1-2.3-2.3.1-2.2L3 13.5v-3L4.6 9l-.1-2.2 2.3-2.3 2.2.1L10.5 3h3L15 4.6l2.2-.1 2.3 2.3-.1 2.2 1.6 1.5v3L19.4 15Z"/></svg>
         设置
@@ -31,7 +34,7 @@
       <span class="top-action-divider" aria-hidden="true"></span>
       <div class="project-actions" aria-label="工程操作">
         <button id="newTaskButton" class="header-button project-action new-task-action" type="button"><span aria-hidden="true">＋</span>新建工程</button>
-        <button id="saveVersionButton" class="header-button project-action save-project-action" type="button" title="保存录音关联、转写稿、校订状态、书面稿和当前处理进度">保存工程版本</button>
+        <button id="saveVersionButton" class="header-button project-action save-project-action" type="button" title="自动保存负责日常修改；保存版本用于保留以后可恢复的完整工作节点">保存版本</button>
         <button id="historyButton" class="header-button project-action history-action" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h6l1.5 2H20v9.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6.5Z"/><path d="M8 13h8M8 16.5h5"/></svg>
           工程历史 <span aria-hidden="true">›</span>
@@ -40,8 +43,15 @@
     </div>
   </header>
 
+  <div class="project-context">
+    <div><strong id="currentProjectTitle">未命名课堂</strong><span id="currentProjectStage">原文修订</span></div>
+    <nav aria-label="工作阶段"><a href="#transcriptionWorkspace">导入素材</a><a href="#editorWorkspace">原文修订与校订</a><a href="#resultCard">复核与书面整理</a></nav>
+    <button id="focusModeButton" class="text-button" type="button" aria-pressed="false">专注模式</button>
+  </div>
+
   <main class="workspace">
-    <section class="transcription-card">
+    <p id="recordingRecoveryNotice" class="recording-recovery-notice" hidden><span id="recordingRecoveryCount"></span> <a id="openRecordingRecovery" href="/live.html">查看并恢复录音</a></p>
+    <section id="transcriptionWorkspace" class="transcription-card">
       <div class="transcription-heading">
         <div class="section-title compact">
           <span class="step">1</span>
@@ -94,6 +104,8 @@
       </div>
     </section>
 
+    <details id="contextSettings" class="context-settings">
+      <summary>课程语境与术语 <small>可选 · 点击展开；录音转写和校订都会使用</small></summary>
     <section class="settings-card">
       <div class="section-title">
         <span class="step">2</span>
@@ -134,12 +146,13 @@
         <span>文字处理服务、API Key 与快捷键已统一移至右上角“设置”，这里仅保留本任务的校订规则。</span>
       </div>
     </section>
+    </details>
 
-    <section class="editor-card">
+    <section id="editorWorkspace" class="editor-card">
       <div class="editor-head">
         <div class="section-title compact">
           <span class="step">3</span>
-          <div><h2>粘贴转写稿</h2><p id="textStats">0 字 · 约 0 分钟内容</p></div>
+          <div><h2>原文修订</h2><p id="textStats">0 字 · 约 0 分钟内容</p></div>
         </div>
         <div class="editor-actions">
           <label class="text-button file-button">导入文件<input id="fileInput" type="file" accept=".txt,.md,.srt,.vtt,text/plain"></label>
@@ -177,9 +190,10 @@
 
     <section id="resultCard" class="result-card empty">
       <div id="resultContent" hidden>
+        <p id="resultFreshness" class="result-freshness" role="status" aria-live="polite" hidden></p>
         <div class="result-head">
           <div>
-            <span class="eyebrow">校订完成</span>
+            <span id="resultStatusLabel" class="eyebrow">校订完成</span>
             <h2 id="resultSummary">已生成校订稿</h2>
             <small id="usageSummary" class="usage-summary"></small>
           </div>
@@ -202,7 +216,7 @@
         <nav class="tabs secondary-tabs" aria-label="结果视图">
           <button class="tab active" data-tab="review" type="button">人工复核 <span id="uncertainCount">0</span></button>
           <button class="tab" data-tab="changes" type="button">修改记录 <span id="changeCount">0</span></button>
-          <button class="tab" data-tab="prose" type="button">论述稿 <span id="proseStateBadge">未生成</span></button>
+          <button class="tab" data-tab="prose" type="button">书面整理稿 <span id="proseStateBadge">未生成</span></button>
         </nav>
         <div id="reviewPanel" class="tab-panel active review-panel">
           <div id="reviewAudioDock" class="review-audio-dock" hidden>
@@ -214,7 +228,7 @@
               <div class="editable-note"><span><i></i>原始转写与校订稿同步滚动；校订稿可直接编辑</span><span id="editedState">尚未手动修改</span></div>
               <div class="compare-grid">
                 <section><header>原始转写</header><pre id="originalText" class="compare-text"></pre></section>
-                <section><header>校订定稿</header><textarea id="correctedText" class="corrected-text" spellcheck="false" aria-label="可编辑的校订稿"></textarea></section>
+                <section><header>校订稿（可复核与修改）</header><textarea id="correctedText" class="corrected-text" spellcheck="false" aria-label="可编辑的校订稿"></textarea></section>
               </div>
             </section>
             <section class="review-issues-column">
@@ -239,7 +253,7 @@
                 <option value="lecture">章节化讲义</option>
               </select>
             </label>
-            <button id="proseButton" class="primary-button compact" type="button">生成论述稿</button>
+            <button id="proseButton" class="primary-button compact" type="button">生成整理稿</button>
             <button id="proseCancel" class="text-button" type="button" hidden>暂停</button>
             <button id="copyProse" class="text-button" type="button" disabled>复制</button>
             <div class="export-wrap prose-export-wrap">
@@ -264,6 +278,8 @@
           </div>
           <div id="proseResult" class="prose-result" hidden>
             <div class="editable-note"><span><i></i>生成后可继续人工编辑</span><span id="proseUsage"></span></div>
+            <div class="document-view-controls"><div role="group" aria-label="整理稿视图"><button id="readProseButton" class="secondary-button" type="button" aria-pressed="true">阅读</button><button id="editProseButton" class="secondary-button" type="button" aria-pressed="false">编辑</button></div><label>正文字号 <select id="documentFontSize"><option value="15">15</option><option value="17" selected>17</option><option value="19">19</option><option value="21">21</option></select></label></div>
+            <div id="proseReadView" class="document-read-view"><nav id="proseContents" aria-label="整理稿章节目录"></nav><article id="proseReading" aria-label="书面整理稿阅读预览"></article></div>
             <textarea id="proseText" class="prose-text" spellcheck="false" aria-label="可编辑的书面整理稿"></textarea>
           </div>
         </div>
@@ -289,12 +305,18 @@
   </dialog>
 
   <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
-  <aside id="historyDrawer" class="history-drawer" aria-label="工程历史" aria-hidden="true">
-    <header><div><span class="eyebrow">本机工程</span><h2>工程历史</h2></div><button id="closeHistory" class="icon-close" type="button">×</button></header>
+  <aside id="historyDrawer" class="history-drawer" role="dialog" aria-modal="true" aria-label="工程历史" aria-hidden="true" inert>
+    <header><div><span class="eyebrow">本机工程</span><h2>工程历史</h2></div><button id="closeHistory" class="icon-close" type="button" aria-label="关闭工程历史">×</button></header>
     <p>工程会自动保存录音关联、原始转写、人工修改、校订进度和书面稿。API Key 与全局设置单独保存，不会写入工程。</p>
-    <div id="historyList" class="history-list"></div>
-    <div class="version-heading"><strong>当前工程的保存版本</strong><small>版本是完整工作状态的可恢复快照</small></div>
-    <div id="versionList" class="history-list version-list"></div>
+    <div class="history-controls">
+      <div class="history-tabs" role="group" aria-label="工程范围"><button id="historyActive" type="button" aria-pressed="true">工程</button><button id="historyTrash" type="button" aria-pressed="false">回收站</button></div>
+      <label><span>搜索工程名称</span><input id="historySearch" type="search" maxlength="200" placeholder="输入工程名称" autocomplete="off"></label>
+      <small id="historyTrashHint" hidden>删除的工程、版本与录音保留在本机，可随时恢复；不会自动清空。</small>
+    </div>
+    <div id="historyList" class="history-list" aria-live="polite"></div>
+    <nav class="history-pagination" aria-label="工程翻页"><button id="historyPrevious" type="button" disabled>上一页</button><span id="historyPageStatus" role="status"></span><button id="historyNext" type="button" disabled>下一页</button></nav>
+    <section id="historyVersions"><div class="version-heading"><strong>当前工程的保存版本</strong><small>版本是完整工作状态的可恢复快照</small></div>
+    <div id="versionList" class="history-list version-list"></div></section>
   </aside>
 
   <div id="nameDialogBackdrop" class="drawer-backdrop" hidden></div>
@@ -309,7 +331,7 @@
 
   <div id="settingsBackdrop" class="drawer-backdrop" hidden></div>
   <section id="apiSettingsDialog" class="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="apiSettingsTitle" hidden>
-    <header><div><span class="eyebrow">本机配置</span><h2 id="apiSettingsTitle">设置</h2></div><button id="closeApiSettings" class="icon-close" type="button">×</button></header>
+    <header><div><span class="eyebrow">本机配置</span><h2 id="apiSettingsTitle">设置</h2></div><button id="closeApiSettings" class="icon-close" type="button" aria-label="关闭设置">×</button></header>
     <p class="settings-explain">密钥只保存在本机 <code>data/settings.json</code>，采用可跨设备迁移的轻量加密。它能避免直接明文查看，但不等同于系统保险库。</p>
     <div class="provider-grid provider-columns">
       <fieldset class="provider-column">
@@ -359,6 +381,6 @@
   </section>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app.js?v=0.21.1" type="module"></script>
+  <script src="/app.js?v=0.23.1" type="module"></script>
 </body>
 </html>

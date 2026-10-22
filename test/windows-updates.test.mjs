@@ -78,11 +78,14 @@ test("install handoff waits for helper readiness and keeps user metadata and pro
   const config = '<configuration>test-only DPI configuration</configuration>';
   const { updater, dataDir } = await fixture(t, { launch: async (file, args) => { launched++; assert.equal(args[7], version); assert.equal(await fs.readFile(`${file}.config`, "utf8"), config); await fs.writeFile(args[6], "ready"); } });
   await fs.writeFile(path.join(updater.root, "UpdateHelper.exe.config"), config);
+  await fs.mkdir(path.join(dataDir,"trash"),{recursive:true});
+  await fs.writeFile(path.join(dataDir,"trash","task-example.json"),JSON.stringify({task:{id:"task-example",sourceText:"需保留的回收站内容"}}));
   await updater.check(); await updater.download(); await updater.pendingDownload;
   const result = await updater.apply({ launcherPid: 123 });
   assert.equal(result.installing, true); assert.equal(launched, 1);
   const backup = (await fs.readdir(updater.directory)).find(name => name.startsWith("rollback-"));
   assert.equal(await fs.readFile(path.join(updater.directory, backup, "metadata", "settings.json"), "utf8"), "fake user settings");
+  assert.equal(JSON.parse(await fs.readFile(path.join(updater.directory,backup,"metadata","trash","task-example.json"),"utf8")).task.sourceText,"需保留的回收站内容");
   assert.equal(await fs.readFile(path.join(dataDir, "settings.json"), "utf8"), "fake user settings");
   assert.ok(await fs.stat(path.join(updater.directory, backup, "app", "package.json")));
 });

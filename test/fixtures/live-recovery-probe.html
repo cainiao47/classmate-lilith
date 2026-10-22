@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>隔离合成录音验证</title>
+<style>body{font:18px sans-serif;padding:40px}button,a{display:block;margin:20px 0;padding:12px}output{display:block}</style>
+<h1>隔离合成录音验证</h1><p>只录制程序生成的音调，不使用麦克风、不连接在线识别。</p>
+<button id="start">生成合成测试录音</button><output id="status">尚未开始</output><a href="/live.html">离开录音页，模拟页面中断</a>
+<script type="module">
+// For manual, isolated validation only: temporarily serve this fixture from
+// the development public directory. Never include it in a release package.
+import { createLiveBackup } from '/modules/live-backup.js';
+let backup, recorder, context, startedAt;
+document.querySelector('#start').onclick=async()=>{
+  document.querySelector('#start').disabled=true;
+  context=new AudioContext();
+  const oscillator=context.createOscillator(),destination=context.createMediaStreamDestination();
+  oscillator.connect(destination);oscillator.frequency.value=220;
+  backup=createLiveBackup({snapshot:()=>({topic:'合成录音中断验证',text:'这是一段虚构的恢复测试文稿。',segments:[{id:'one',text:'这是一段虚构的恢复测试文稿。',startMs:0,endMs:1000}],durationMs:Date.now()-startedAt,phase:'recording',provider:'alibaba',model:'qwen3-asr-flash-realtime',language:'zh'}),onStatus:s=>{document.querySelector('#status').textContent=`本机已落盘 ${s.count} 段；等待 ${s.pending} 段${s.failed?'；写入失败':''}`;}});
+  await backup.start({extension:'webm',topic:'合成录音中断验证'});
+  recorder=new MediaRecorder(destination.stream,{mimeType:'audio/webm;codecs=opus'});
+  recorder.ondataavailable=e=>backup.append(e.data);
+  startedAt=Date.now();oscillator.start();recorder.start(1000);
+};
+</script>

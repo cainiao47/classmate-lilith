@@ -450,6 +450,44 @@ namespace ClassmateLilithLauncher
 
         internal void PermitClose() { allowClose = true; }
 
+        private async System.Threading.Tasks.Task<string> ExitScript(string script)
+        {
+            var call = webView.CoreWebView2.ExecuteScriptAsync(script);
+            if (await System.Threading.Tasks.Task.WhenAny(call, System.Threading.Tasks.Task.Delay(1200)) != call)
+                throw new TimeoutException("Workspace exit check timed out.");
+            return await call;
+        }
+
+        internal async System.Threading.Tasks.Task<bool> PrepareToExit()
+        {
+            if (webView == null || webView.CoreWebView2 == null)
+                return MessageBox.Show(this, "尚未连接到可检查保存状态的应用窗口。如果正在外部浏览器录音或编辑，请先结束并保存。仍要退出并停止服务吗？", "退出前确认", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+            try
+            {
+                string started = await ExitScript("typeof window.classmatePrepareExit === 'function' ? (window.classmatePrepareExit(), 'started') : 'unsupported'");
+                if (started == "\"started\"")
+                {
+                    var limit = Stopwatch.StartNew();
+                    while (limit.ElapsedMilliseconds < 8000)
+                    {
+                        string status = await ExitScript("window.classmateExitStatus");
+                        if (status == "\"ready\"") return true;
+                        if (status == "\"blocked\"")
+                        {
+                            Show(); Activate();
+                            MessageBox.Show(this, "录音、处理任务或未保存的编辑尚未结束。请先结束/暂停任务并保存，再退出。", "暂不退出", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            return false;
+                        }
+                        if (status == "\"failed\"") break;
+                        await System.Threading.Tasks.Task.Delay(100);
+                    }
+                }
+            }
+            catch { }
+            try { await ExitScript("window.classmateCancelExit && window.classmateCancelExit()"); } catch { }
+            return MessageBox.Show(this, "无法确认页面是否已保存。强制退出可能丢失尚未保存的内容。仍要退出吗？", "退出前确认", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+        }
+
         private void OnFormClosing(object sender, FormClosingEventArgs args)
         {
             if (allowClose) return;
@@ -484,7 +522,7 @@ namespace ClassmateLilithLauncher
             updateExit = new EventWaitHandle(false, EventResetMode.ManualReset, "Local\\ClassmateLilithUpdateExit-" + Process.GetCurrentProcess().Id);
             updateTimer = new System.Windows.Forms.Timer();
             updateTimer.Interval = 250;
-            updateTimer.Tick += delegate { if (updateExit.WaitOne(0)) StopAndExit(); };
+            updateTimer.Tick += delegate { if (updateExit.WaitOne(0)) StopAndExit(true); };
             updateTimer.Start();
             token = LoadOrCreateToken(baseDir);
             workspace = new WorkspaceForm(baseDir);
@@ -660,10 +698,11 @@ namespace ClassmateLilithLauncher
             else BeginStartup();
         }
 
-        private void StopAndExit()
+        private async void StopAndExit(bool forUpdate = false)
         {
             if (isQuitting) return;
             isQuitting = true;
+            if (!forUpdate && !await workspace.PrepareToExit()) { isQuitting = false; return; }
             startupTimer.Stop();
             try
             {

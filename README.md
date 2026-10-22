@@ -21,13 +21,13 @@ Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线
 
 | 系统 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows 10/11 x64 安装版 | [v0.22.2 安装包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.22.2/Classmate-Lilith-Setup-0.22.2.exe) | 安装向导、旧版数据导入、应用内检查与安装更新 |
-| Windows 10/11 x64 便携版 | [v0.22.2 便携包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.22.2/Classmate-Lilith-Windows-x64.zip) | 解压后双击 `Classmate Lilith.exe`，无需安装 |
+| Windows 10/11 x64 安装版 | [v0.23.1 安装包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.23.1/Classmate-Lilith-Setup-0.23.1.exe) | 安装向导、旧版数据导入、应用内检查与安装更新 |
+| Windows 10/11 x64 便携版 | [v0.23.1 便携包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.23.1/Classmate-Lilith-Windows-x64.zip) | 解压后双击 `Classmate Lilith.exe`，无需安装 |
 | macOS 13+ Apple Silicon | [v0.21.1 下载页](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.21.1) | 本轮保留 GitHub 现有版本，首次启动需手动放行 |
 
 Windows 安装与覆盖升级详见 [Windows 安装说明](docs/WINDOWS_INSTALL.md)。安装版将用户数据独立保存，升级保留数据；卸载时显示数据路径，可手动选择保留或经二次确认后删除。首次安装可以从旧便携版复制并校验数据。
 
-当前 Windows 正式版为 **[v0.22.2](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.22.2)**（2026-10-21），包含 EXE 安装器、便携包和签名更新清单；已合并 GitHub v0.21.1 源码。此前误编号的本地 v0.18.0 包不再使用。macOS 下载仍为 **v0.21.1**，本轮不重新构建。详见 [发布说明](docs/RELEASE_0.22.2.md) 与 [版本核对记录](docs/VERSION_AUDIT.md)。
+当前 Windows 正式版为 **[v0.23.1](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.23.1)**（2026-10-22），包含全部交互与阅读改进、录音分段恢复、工程搜索分页和回收站，并提供 EXE 安装器、便携包与签名更新清单。此前 v0.23.0 仅为本地测试包，内容不完整，请使用本版。macOS 下载仍为 **v0.21.1**，本轮不重新构建。详见 [发布说明](docs/RELEASE_0.23.1.md) 与 [版本核对记录](docs/VERSION_AUDIT.md)。
 
 macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次运行时请按 [macOS 安装说明](docs/MACOS_INSTALL.md) 操作。Intel Mac 暂未提供预编译包。
 
@@ -44,7 +44,17 @@ Windows 版使用 WebView2独立应用窗口；Windows 11 已包含对应运行�
 - 全局术语库、任务历史、运行日志与 TXT/Markdown/Word/SRT 导出。
 - API Key 只存放在本机，不提交到仓库。
 
-## Windows 当前版本：0.22.2
+## Windows 当前版本：0.23.1
+
+- 第一批交互修订：切换前保存、处理中切换保护、恢复前自动备份及版本关联录音保留。
+- 分离保存状态与结果有效性，修复成稿空态占位；增加整理稿阅读预览、目录、字号和专注模式。
+- 补齐设置弹窗焦点与 Esc、实时页面离开保护，Windows 普通退出会先检查页面并保存。
+- 语境默认折叠，主编辑区前移，调整字号与较小窗口布局。课程主题与术语框继续保持等高。
+- 实时录音分段落盘与异常恢复、工程名称搜索和分页、可恢复的工程回收站。说明与限制见 [数据保护说明](docs/UX_IMPROVEMENTS.md)。
+- 从本版源码重新构建，包含上述全部新增功能；不会替用户安装或修改正式数据。
+- 仅恢复已经写入的部分，不保证异常前最后几秒、断电或磁盘故障时零丢失。回收站与录音恢复点暂不自动清理，会占用本机空间。
+
+### 0.22.2（历史版本）
 
 - 增加 EXE 安装向导、旧便携版数据迁移、快捷方式和卸载入口，安装版数据与程序分开保存。
 - 增加应用内更新检查、签名和完整性验证、确认安装、程序与元数据备份，以及安装失败时的程序恢复。
@@ -103,7 +113,7 @@ macOS 版以 Apple Silicon（arm64）为首个目标，复用同一套网页、�
 
 ## 隐私与网络
 
-本地网页服务只监听 `127.0.0.1`。录音会先在本机标准化和切片，再发送到用户选择的在线转写服务；校订文本会发送到用户选择的文字处理服务。删除历史任务时，任务专属录音会一并清理。
+本地网页服务只监听 `127.0.0.1`。文件录音会先在本机标准化和切片，再发送到用户选择的在线转写服务；实时录音将音频流发送到所选语音服务，同时保留本机恢复分段；校订文本会发送到用户选择的文字处理服务。工程删除改为移入回收站，版本与录音保留，不等于永久擦除。v0.22.2 等旧版仍采用原先的删除行为。
 
 ## 发布结构
 

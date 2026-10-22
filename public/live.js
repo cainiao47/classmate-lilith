@@ -1,5 +1,7 @@
 import { ONLINE_TRANSCRIPTION_PROVIDERS, providerConfigured } from "./modules/online-providers.js";
 import { reportUpdateActivity } from "./modules/windows-updates.js";
+import { liveProtection } from "./modules/workspace-lifecycle.js";
+import { createLiveBackup } from "./modules/live-backup.js";
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
@@ -39,6 +41,19 @@ let importedJob = null;
 let savedTaskId = "";
 let transcriptEdited = false;
 let updateLease = { flush: async () => {} };
+let liveRevision = 0, liveSavedRevision = 0, saving = false, leavingConfirmed = false;
+let backup = null, recoveryId = "", stoppedDuration = null, recoveryLoading = false;
+let lastCheckpointAt = 0;
+const returnTask = new URLSearchParams(location.search).get("returnTask");
+const returnPath = returnTask && /^[a-zA-Z0-9_-]{8,80}$/.test(returnTask) ? `/?task=${encodeURIComponent(returnTask)}` : "/";
+function protection() { return liveProtection({ phase, hasRecording: Boolean(recordingBlob?.size || (recoveryId && transcriptText())), savedTaskId, revision: liveRevision, savedRevision: liveSavedRevision, saving: saving || recoveryLoading }); }
+function setSaving(value) {
+  saving = value;
+  elements.saveTask.disabled = value; elements.sendToReview.disabled = value;
+  elements.transcript.readOnly = value; elements.topic.readOnly = value; elements.keywords.readOnly = value;
+  elements.start.disabled = value || !configuredForLive(elements.provider.value) || protection().busy;
+  updateLease.flush();
+}
 
 function toast(message, kind = "info") {
   elements.toast.textContent = message;
@@ -66,12 +81,89 @@ function formatClock(milliseconds, withMillis = false) {
 }
 
 function elapsedMs() {
+  if (stoppedDuration !== null) return stoppedDuration;
   if (!startedAt) return 0;
   return Math.max(0, (pausedAt || Date.now()) - startedAt - pausedTotal);
 }
 
+function backupSnapshot() {
+  return { topic: elements.topic.value, keywords: elements.keywords.value, provider: elements.provider.value, model: elements.model.value,
+    language: elements.language.value, text: transcriptText(), segments, durationMs: elapsedMs(), phase };
+}
+
+function newBackup() {
+  const instance = createLiveBackup({ snapshot: backupSnapshot,
+    onStatus(state) {
+      if (backup !== instance) return;
+      const status = $("#liveBackupStatus");
+      status.classList.toggle("backup-error", state.failed);
+      status.textContent = state.failed ? `恢复点写入失败，${state.pending} 段音频等待重试。请勿关闭程序；可结束后手动保存录音。`
+        : `本机已落盘 ${state.count} 段${state.lastSavedAt ? ` · ${new Date(state.lastSavedAt).toLocaleTimeString()}` : ""}${state.pending ? ` · ${state.pending} 段等待写入` : ""}。异常退出后可从此页恢复。`;
+    }, onError() { /* Persistent status above is deliberately not a transient toast. */ }
+  });
+  return instance;
+}
+
+async function refreshRecoveries() {
+  const panel = $("#liveRecoveryPanel"), list = $("#liveRecoveryList");
+  try {
+    const response = await fetch("/api/live-recordings", { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) throw Error(payload.error || "恢复点列表读取失败。");
+    list.replaceChildren();
+    const recordings = (payload.recordings || []).filter(item => item.id !== recoveryId);
+    panel.hidden = !recordings.length;
+    for (const item of recordings) {
+      const row = document.createElement("div"), text = document.createElement("p"), button = document.createElement("button");
+      row.className = "live-recovery-item";
+      text.textContent = `${item.topic || "未命名录音"} · ${item.updatedAt ? new Date(item.updatedAt).toLocaleString() : "时间未知"} · ${item.persistedChunks || 0} 段 · ${((item.bytes || 0) / 1024 / 1024).toFixed(1)} MB${item.damaged ? " · 文件可能不完整" : ""}`;
+      button.type = "button"; button.className = "secondary-button"; button.textContent = item.active ? "其他窗口正在录音" : "恢复录音与文稿"; button.disabled = Boolean(item.active);
+      button.onclick = () => restoreRecording(item.id);
+      row.append(text, button); list.append(row);
+    }
+  } catch (error) { panel.hidden = false; list.textContent = error.message || "恢复点列表读取失败，可点击刷新重试。"; }
+}
+
+async function restoreRecording(id) {
+  if (protection().busy) return toast("请先结束录音或保存，再恢复其他录音。", "error");
+  if (protection().dirty && !confirm("当前录音尚未保存，切换后仍可从恢复点找回已落盘的部分。是否恢复所选录音？")) return;
+  recoveryLoading = true; elements.start.disabled = true; await updateLease.flush();
+  try {
+    if (backup) await backup.flush();
+    const response = await fetch(`/api/live-recordings/${id}`, { cache: "no-store" }), record = await response.json();
+    if (!response.ok) throw Error(record.error || "读取恢复点失败。");
+    if (record.active) throw Error("该录音仍在其他窗口进行。异常中断后请稍候 15 秒，再刷新列表。");
+    if (record.savedTaskId) throw Error("该录音已保存为工程，请从工程历史打开。");
+    let blob = null, audioWarning = "";
+    if (record.bytes && !record.damaged) {
+      const audio = await fetch(`/api/live-recordings/${id}/audio`);
+      if (!audio.ok) throw Error("合并恢复音频失败；恢复点仍保留，可稍后重试。");
+      blob = await audio.blob();
+    } else audioWarning = "音频为空或不完整，已保留原文件；可以先保存恢复的文稿。";
+    backup?.stop();
+    recoveryId = id; importedJob = null; savedTaskId = ""; liveRevision = 0; liveSavedRevision = 0;
+    recordingChunks = []; recordingBlob = blob; recordingExtension = record.extension;
+    recordingName = `recovered-${id}.${record.extension}`;
+    stoppedDuration = record.durationMs; phase = "done";
+    elements.topic.value = record.topic; elements.keywords.value = record.keywords;
+    elements.provider.value = record.provider; elements.model.value = record.model; elements.language.value = record.language;
+    elements.modelField.hidden = record.provider !== "alibaba";
+    segments = record.segments || []; partials.clear(); renderPartial(); transcriptEdited = true;
+    elements.transcript.value = typeof record.text === "string" ? record.text : segments.map(item => item.text).join("\n"); renderSegments();
+    elements.transcript.disabled = false; elements.pause.disabled = true; elements.stop.disabled = true;
+    updateTimer(); enableResults(Boolean(blob?.size || transcriptText())); elements.downloadAudio.disabled = !blob?.size;
+    backup = newBackup(); backup.attach(record);
+    setConnection("已恢复，待保存", "ready");
+    elements.saveState.textContent = audioWarning || "已恢复落盘部分；异常发生前尚未写入的末尾音频或文字可能缺失。请试听并保存为工程。";
+    await refreshRecoveries();
+    toast("已恢复本机录音与最近保存的文稿。 ");
+  } catch (error) { toast(error.message || "录音恢复失败。", "error"); }
+  finally { recoveryLoading = false; elements.start.disabled = !configuredForLive(elements.provider.value); await updateLease.flush(); }
+}
+
 function updateTimer() {
   elements.elapsed.textContent = formatClock(elapsedMs());
+  if (["recording", "paused"].includes(phase) && Date.now() - lastCheckpointAt > 5000) { lastCheckpointAt = Date.now(); backup?.checkpoint(); }
 }
 
 function cleanText(value) {
@@ -79,7 +171,7 @@ function cleanText(value) {
 }
 
 function transcriptText() {
-  return cleanText(elements.transcript.value || segments.map((item) => item.text).join("\n"));
+  return cleanText(transcriptEdited ? elements.transcript.value : (elements.transcript.value || segments.map((item) => item.text).join("\n")));
 }
 
 function renderPartial() {
@@ -149,6 +241,14 @@ async function loadInitialData() {
     elements.keywords.value = [...new Set(terms)].join("\n");
   }
   await refreshMicrophones();
+  if (returnPath !== "/") {
+    const response = await fetch(`/api/tasks/${encodeURIComponent(returnTask)}`, { cache: "no-store" });
+    if (!response.ok) throw new Error("原工程读取失败，请返回工作台从工程历史重新打开。");
+    const task = await response.json();
+    elements.topic.value = task.background || ""; elements.keywords.value = task.glossary || elements.keywords.value;
+  }
+  for (const link of document.querySelectorAll('.live-topbar a[href="/"]')) link.href = returnPath;
+  $("#liveConfigureLink").href = returnPath + (returnPath.includes("?") ? "&settings=1" : "?settings=1");
 }
 
 async function refreshMicrophones() {
@@ -199,6 +299,14 @@ function stopAudioGraph() {
 
 async function beginCapture() {
   clearTimeout(connectionTimer);
+  if (backup) await backup.flush();
+  const options = mediaRecorderOptions();
+  const nextBackup = newBackup();
+  const nextRecoveryId = await nextBackup.start({ ...backupSnapshot(), text: "", segments: [], durationMs: 0, phase: "recording", extension: recordingExtension });
+  backup?.stop(); backup = nextBackup;
+  segments = []; partials.clear(); elements.transcript.value = ""; transcriptEdited = false;
+  liveRevision = 0; liveSavedRevision = 0; stoppedDuration = null; recoveryId = nextRecoveryId;
+  startedAt = 0; pausedAt = 0; pausedTotal = 0;
   audioContext = new AudioContext({ latencyHint: "interactive" });
   const source = audioContext.createMediaStreamSource(stream);
   processor = audioContext.createScriptProcessor(4096, 1, 1);
@@ -226,13 +334,13 @@ async function beginCapture() {
   recordingBlob = null;
   importedJob = null;
   savedTaskId = "";
-  const options = mediaRecorderOptions();
   mediaRecorder = new MediaRecorder(stream, options);
-  mediaRecorder.ondataavailable = (event) => { if (event.data.size) recordingChunks.push(event.data); };
+  mediaRecorder.ondataavailable = (event) => { if (event.data.size) { recordingChunks.push(event.data); backup.append(event.data); } };
   mediaRecorder.onstop = () => {
     recordingBlob = new Blob(recordingChunks, { type: mediaRecorder.mimeType || options.mimeType || "audio/webm" });
     recordingName = `live-recording-${new Date().toISOString().replace(/[:.]/g, "-")}.${recordingExtension}`;
     elements.downloadAudio.disabled = !recordingBlob.size;
+    backup.checkpoint();
     maybeFinish();
   };
   mediaRecorder.start(1000);
@@ -250,15 +358,18 @@ async function beginCapture() {
   elements.microphone.disabled = true;
   setConnection("正在转写", "ready");
   renderSegments();
-  await refreshMicrophones();
+  await refreshMicrophones().catch(() => {});
 }
 
 async function startSession() {
+  if (protection().busy) return;
+  if (protection().dirty && !confirm("上一段录音或修改尚未保存。开始新录音会替换页面中的旧结果，仍要继续吗？")) return;
   if (!configuredForLive(elements.provider.value)) {
     return toast(elements.provider.value === "tencent" ? "请先在主工作台设置中补全腾讯云 AppID、SecretId 和 SecretKey。" : "请先在主工作台设置中配置所选服务的 API Key。", "error");
   }
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast("当前浏览器不支持麦克风实时录音。", "error");
   elements.start.disabled = true;
+  phase = "requesting";
   setConnection("请求麦克风…");
   try {
     const deviceId = elements.microphone.value;
@@ -292,7 +403,10 @@ async function startSession() {
       const message = JSON.parse(event.data);
       if (message.type === "ready") {
         sampleRate = Number(message.sampleRate) || 16000;
-        if (phase === "connecting") await beginCapture();
+        if (phase === "connecting") {
+          try { await beginCapture(); }
+          catch (error) { phase = "idle"; socket?.close(); stopAudioGraph(); elements.start.disabled = false; setConnection("无法开始", "error"); toast(error.message || "本机录音恢复点无法创建，未开始录音。", "error"); }
+        }
         else if (["recording", "paused"].includes(phase)) {
           setConnection(message.reconnected ? "已恢复转写" : "正在转写", "ready");
           if (message.reconnected) toast(`实时转写已恢复${message.bufferedMs ? `，已补送约 ${(message.bufferedMs / 1000).toFixed(1)} 秒缓冲音频` : ""}。`);
@@ -307,11 +421,13 @@ async function startSession() {
         partials.set(message.id, message.append ? previous + message.text : message.text);
         renderPartial();
       } else if (message.type === "final") {
+        liveRevision++;
         partials.delete(message.id);
         segments = segments.filter((item) => item.id !== message.id);
         segments.push({ id: message.id, text: cleanText(message.text), startMs: Number(message.startMs) || 0, endMs: Number(message.endMs) || elapsedMs() });
         renderPartial();
         renderSegments();
+        backup?.checkpoint();
       } else if (message.type === "finished") {
         if (phase === "finalizing") phase = "done";
         maybeFinish();
@@ -349,6 +465,7 @@ async function startSession() {
   } catch (error) {
     clearTimeout(connectionTimer);
     stopAudioGraph();
+    phase = "idle";
     elements.start.disabled = false;
     setConnection("无法开始", "error");
     toast(error.name === "NotAllowedError" ? "没有获得麦克风权限，请在浏览器中允许后重试。" : (error.message || "无法开始实时录音。"), "error");
@@ -370,12 +487,16 @@ function togglePause() {
     elements.pause.textContent = "暂停录音";
     setConnection("正在转写", "ready");
   }
+  backup?.checkpoint();
 }
 
 function stopSession({ providerError = false } = {}) {
   if (!["recording", "paused"].includes(phase)) return;
+  const duration = elapsedMs();
   if (phase === "paused") pausedTotal += Date.now() - pausedAt;
   phase = "finalizing";
+  stoppedDuration = duration;
+  backup?.checkpoint();
   clearInterval(timer);
   updateTimer();
   elements.pause.disabled = true;
@@ -403,8 +524,9 @@ function maybeFinish() {
   elements.language.disabled = false;
   elements.microphone.disabled = false;
   elements.transcript.disabled = false;
-  enableResults(Boolean(transcriptText()));
+  enableResults(Boolean(recordingBlob?.size || transcriptText()));
   elements.saveState.textContent = "结果尚未保存到历史记录；可先人工修改或直接导出。";
+  backup?.checkpoint();
   toast("实时转写已结束，可以导出或送入人工修订。 ");
 }
 
@@ -426,6 +548,7 @@ function srtText() {
 
 async function ensureImportedJob() {
   if (importedJob) return importedJob;
+  if (!recordingBlob?.size && recoveryId && transcriptText()) return null;
   if (!recordingBlob?.size) throw new Error("没有可保存的本机录音。");
   elements.saveState.textContent = "正在保存录音与实时转写稿……";
   const uploadResponse = await fetch(`/api/transcription/upload?filename=${encodeURIComponent(recordingName)}`, { method: "POST", body: recordingBlob });
@@ -446,6 +569,7 @@ async function ensureImportedJob() {
 }
 
 async function createHistoryTask() {
+  const revision = liveRevision;
   const job = await ensureImportedJob();
   const id = savedTaskId || `task-${crypto.randomUUID()}`;
   const text = transcriptText();
@@ -455,17 +579,25 @@ async function createHistoryTask() {
     status: "draft", sourceText: text, background: elements.topic.value.trim(), glossary: elements.keywords.value.trim(),
     textProvider: settings?.textProvider || "deepseek", mode: "standard", transcriptionDraft: text,
     transcriptionEngine: elements.provider.value,
-    transcriptionMeta: {
+    liveRecordingRecoveryId: recoveryId || undefined,
+    transcriptionMeta: job ? {
       jobId: job.id, engine: job.engine, engineName: job.engineName, sourceName: recordingName,
       completedAt: now, srt: job.result?.srt || srtText(), approximateTimestamps: Boolean(job.result?.approximateTimestamps),
       audioUrl: `/api/transcription/jobs/${job.id}/audio`, realtime: true
-    }
+    } : null
   };
   const response = await fetch(`/api/tasks/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(task) });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error || "保存历史任务失败。");
   const wasSaved = Boolean(savedTaskId);
   savedTaskId = id;
+  liveSavedRevision = revision;
+  if (backup) {
+    try {
+      if (!await backup.complete(id)) elements.saveState.textContent = "工程已保存，录音恢复点归档未完成，仍保留在本机。";
+      else $("#liveBackupStatus").textContent = "已保存为工程，恢复点已归档（原分段仍保留在本机）。";
+    } catch { $("#liveBackupStatus").textContent = "工程已保存，恢复点尚未归档；原分段仍保留，可稍后重试。"; }
+  }
   await updateLease.flush();
   elements.saveState.textContent = wasSaved
     ? "已更新历史任务；录音仍与此任务关联。"
@@ -474,29 +606,28 @@ async function createHistoryTask() {
 }
 
 async function saveTask() {
-  elements.saveTask.disabled = true;
-  elements.sendToReview.disabled = true;
+  if (saving) return;
+  setSaving(true);
   try {
     await createHistoryTask();
     toast("实时转写和录音已保存到历史记录。 ");
   } catch (error) {
     toast(error.message || "保存失败。", "error");
   } finally {
-    elements.saveTask.disabled = false;
-    elements.sendToReview.disabled = false;
+    setSaving(false);
   }
 }
 
 async function sendToReview() {
-  elements.saveTask.disabled = true;
-  elements.sendToReview.disabled = true;
+  if (saving) return;
+  setSaving(true);
   try {
     const id = await createHistoryTask();
+    leavingConfirmed = true;
     location.href = `/?task=${encodeURIComponent(id)}&source=live`;
   } catch (error) {
     toast(error.message || "无法送入人工修订。", "error");
-    elements.saveTask.disabled = false;
-    elements.sendToReview.disabled = false;
+    setSaving(false);
   }
 }
 
@@ -506,11 +637,15 @@ elements.stop.onclick = () => stopSession();
 elements.provider.onchange = () => {
   elements.modelField.hidden = elements.provider.value !== "alibaba";
   setConnection(configuredForLive(elements.provider.value) ? "等待开始" : "需要配置", configuredForLive(elements.provider.value) ? "idle" : "error");
+  elements.start.disabled = !configuredForLive(elements.provider.value);
+  $("#livePreflight").hidden = configuredForLive(elements.provider.value);
 };
 elements.transcript.oninput = () => {
   transcriptEdited = true;
+  liveRevision++;
   elements.wordCount.textContent = `${transcriptText().replace(/\s/g, "").length.toLocaleString()} 字 · 已人工编辑`;
   if (savedTaskId) elements.saveState.textContent = "文稿已有修改，请再次保存以更新历史任务。";
+  backup?.checkpoint();
 };
 elements.exportTxt.onclick = () => download(`${transcriptText()}\n`, "txt");
 elements.exportMd.onclick = () => download(`# ${safeBaseName()}\n\n${transcriptText().replace(/\n/g, "\n\n")}\n`, "md", "text/markdown;charset=utf-8");
@@ -518,9 +653,20 @@ elements.exportSrt.onclick = () => download(srtText(), "srt");
 elements.downloadAudio.onclick = () => recordingBlob && download(recordingBlob, recordingExtension, recordingBlob.type);
 elements.saveTask.onclick = saveTask;
 elements.sendToReview.onclick = sendToReview;
-window.addEventListener("beforeunload", (event) => {
-  if (recordingBlob?.size && !savedTaskId && phase === "done") { event.preventDefault(); event.returnValue = ""; }
+for (const element of [elements.topic, elements.keywords]) element.addEventListener("input", () => { liveRevision++; if(savedTaskId) elements.saveState.textContent="课程语境已有修改，请再次保存。"; backup?.checkpoint(); updateLease.flush(); });
+for (const link of document.querySelectorAll('.live-topbar a')) link.addEventListener("click", event => {
+  const current = protection();
+  if (current.busy) { event.preventDefault(); toast(current.message, "error"); return; }
+  if (current.dirty) {
+    if (!confirm("录音或文稿修改尚未保存，离开将放弃页面中未保存的内容。建议先保存。仍要离开吗？")) event.preventDefault();
+    else leavingConfirmed = true;
+  }
 });
+window.addEventListener("beforeunload", event => { if(!leavingConfirmed && protection().warn) { event.preventDefault(); event.returnValue=""; } });
+window.classmatePrepareExit = () => { window.classmateExitStatus = protection().warn ? "blocked" : "ready"; };
+window.classmateCancelExit = () => { window.classmateExitStatus = "idle"; };
 
-loadInitialData().then(() => setConnection("等待开始")).catch((error) => { setConnection("初始化失败", "error"); toast(error.message, "error"); });
-updateLease = reportUpdateActivity(() => ({ busy: ["connecting", "recording", "paused", "finalizing"].includes(phase), dirty: Boolean(recordingBlob?.size && !savedTaskId) }), "live");
+elements.start.disabled = true;
+$("#liveRefreshRecovery").onclick = refreshRecoveries;
+loadInitialData().then(() => { const ready=configuredForLive(elements.provider.value);setConnection(ready?"等待开始":"需要配置",ready?"idle":"error");elements.start.disabled=!ready;$("#livePreflight").hidden=ready; return refreshRecoveries(); }).catch((error) => { setConnection("初始化失败", "error"); toast(error.message, "error"); });
+updateLease = reportUpdateActivity(() => ({ busy: protection().busy, dirty: protection().dirty }), "live");

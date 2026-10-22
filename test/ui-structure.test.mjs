@@ -19,14 +19,14 @@ test("recording and review areas expose provider-aware account status queries", 
   assert.match(html, /id="queryTextAccountStatus"/);
   assert.match(html, /id="reviewAccountStatusValue"/);
   assert.match(html, /id="settingsTextAccountStatusButton"/);
-  assert.match(html, /<span class="step">3<\/span>\s*<div><h2>粘贴转写稿<\/h2>/);
+  assert.match(html, /<span class="step">3<\/span>\s*<div><h2>原文修订<\/h2>/);
 });
 
 test("project actions are grouped with history at the far right", () => {
   assert.match(html, /id="apiSettingsButton" class="header-button settings-action"/);
   assert.match(html, /class="project-actions"[\s\S]*?id="newTaskButton"[\s\S]*?id="saveVersionButton"[\s\S]*?id="historyButton"/);
   assert.match(html, />新建工程<|>＋<\/span>新建工程/);
-  assert.match(html, />保存工程版本</);
+  assert.match(html, />保存版本</);
   assert.match(html, /工程历史/);
   assert.doesNotMatch(html, /本地运行|local-badge/);
   assert.match(css, /\.header-button\.settings-action/);
@@ -107,6 +107,13 @@ test("written prose export offers text, Markdown, and Word formats", () => {
   assert.match(html, /data-prose-export="txt"/);
   assert.match(html, /data-prose-export="md"/);
   assert.match(html, /data-prose-export="docx"/);
+});
+
+test("workspace exposes persistent validity, document reading, and accessible modal controls", () => {
+  for(const id of ["resultFreshness","currentProjectTitle","readProseButton","editProseButton","proseReading","proseContents","focusModeButton"])assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(css,/\[hidden\] \{ display: none !important;/);
+  assert.match(html,/aria-label="关闭设置"/);
+  assert.match(html,/<details id="contextSettings"/);
 });
 
 test("runtime log is visible in the UI and explains the 20-file retention policy", () => {
