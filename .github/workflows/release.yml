@@ -149,6 +149,8 @@ jobs:
           path: |
             dist/Classmate-Lilith-macOS-arm64.zip
             dist/Classmate-Lilith-macOS-arm64.sha256
+            dist/Classmate-Lilith-macOS-arm64.dmg
+            dist/Classmate-Lilith-macOS-arm64.dmg.sha256
           if-no-files-found: error
 
   publish:

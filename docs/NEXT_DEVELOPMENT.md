@@ -21,3 +21,12 @@
 - 当前仍使用临时签名，尚无 Apple Developer ID 和公证；安装/更新受系统权限和 Gatekeeper 约束，不能宣称已经解决首次放行问题。
 
 参考：[Sparkle 接入文档](https://sparkle-project.org/documentation/)、[程序化接入](https://sparkle-project.org/documentation/programmatic-setup/)、[发布签名](https://sparkle-project.org/documentation/publishing/)。
+
+## 本批结果
+
+- Windows 上的语法检查与 166 项共用代码测试通过；新增检查验证面板最小宽度以及 Ed25519 签名对应确切的归档字节、拒绝错误密钥和非法版本。
+- 隔离浏览器使用 2005 字虚构工程检查鼠标拖动、方向键/Shift 微调、双击复位、重新打开后的偏好保留、单栏切换和 940px 小窗口，正文保持完整，无横向溢出或控制台错误。
+- GitHub macOS 构建已成功编译含 Sparkle 的 Swift 原生应用，并生成 ZIP、DMG 及各自校验文件。开发构建没有运行 Mac 测试，也没有上传正式 Release 或推进更新订阅。
+- 开发分支为 `work/mac-updates-review`；公开下载仍为 v0.24.0。当前 appcast 留空，待首个含更新组件的新版本正式发布后再填入签名条目。
+
+正式发布时可以由配置既有签名机密的工作流生成 appcast；也可以在可信本机上运行 `node distribution/sign-macos-update.mjs <包含Mac ZIP的目录>`，使用忽略目录中的既有发布私钥签名，先上传资源，再提交生成的订阅。无需更改 API 凭据存储。

@@ -139,7 +139,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           feed='distribution/macos-appcast.xml'
-          previous=$(gh api "repos/$GITHUB_REPOSITORY/contents/$feed?ref=main" --jq .sha)
-          node -e 'const fs=require("fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/feed.json",JSON.stringify({message:"Publish signed macOS update feed [skip ci]",branch:"main",sha:process.argv[1],content:fs.readFileSync("dist/macos-appcast.xml").toString("base64")}))' "$previous"
+          gh api "repos/$GITHUB_REPOSITORY/contents/$feed?ref=main" > "$RUNNER_TEMP/previous-feed.json"
+          node -e 'const fs=require("fs"),v=require("./package.json").version,record=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/previous-feed.json","utf8"));const old=Buffer.from(record.content,"base64").toString();const previous=old.match(/<sparkle:version>([^<]+)<\/sparkle:version>/)?.[1];if(previous){const a=previous.split(".").map(Number),b=v.split(".").map(Number);for(let i=0;i<3;i++){if(a[i]>b[i])throw Error("Refusing to downgrade the Mac update feed");if(a[i]<b[i])break;}}fs.writeFileSync(process.env.RUNNER_TEMP+"/feed.json",JSON.stringify({message:"Publish signed macOS update feed [skip ci]",branch:"main",sha:record.sha,content:fs.readFileSync("dist/macos-appcast.xml").toString("base64")}))'
           gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$feed" --input "$RUNNER_TEMP/feed.json"
 
