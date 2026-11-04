@@ -2,6 +2,7 @@ import { ONLINE_TRANSCRIPTION_PROVIDERS, providerConfigured } from "./modules/on
 import { reportUpdateActivity } from "./modules/windows-updates.js";
 import { liveProtection } from "./modules/workspace-lifecycle.js";
 import { createLiveBackup } from "./modules/live-backup.js";
+import { liveCompletion } from "./modules/live-status.js";
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
@@ -33,6 +34,7 @@ let pausedAt = 0;
 let pausedTotal = 0;
 let timer = null;
 let connectionTimer = null;
+let finalizeTimer = null;
 let speechActive = false;
 let lastVoiceAt = 0;
 let segments = [];
@@ -44,15 +46,17 @@ let updateLease = { flush: async () => {} };
 let liveRevision = 0, liveSavedRevision = 0, saving = false, leavingConfirmed = false;
 let backup = null, recoveryId = "", stoppedDuration = null, recoveryLoading = false;
 let lastCheckpointAt = 0;
+let recognitionIssue = false, recognitionFinished = false, recognitionSettled = false, finalized = false;
 const returnTask = new URLSearchParams(location.search).get("returnTask");
 const returnPath = returnTask && /^[a-zA-Z0-9_-]{8,80}$/.test(returnTask) ? `/?task=${encodeURIComponent(returnTask)}` : "/";
 function protection() { return liveProtection({ phase, hasRecording: Boolean(recordingBlob?.size || (recoveryId && transcriptText())), savedTaskId, revision: liveRevision, savedRevision: liveSavedRevision, saving: saving || recoveryLoading }); }
 function setSaving(value) {
   saving = value;
-  elements.saveTask.disabled = value; elements.sendToReview.disabled = value;
+  elements.saveTask.disabled = value; elements.sendToReview.disabled = value || !transcriptText().trim();
   elements.transcript.readOnly = value; elements.topic.readOnly = value; elements.keywords.readOnly = value;
   elements.start.disabled = value || !configuredForLive(elements.provider.value) || protection().busy;
   updateLease.flush();
+  renderLiveState();
 }
 
 function toast(message, kind = "info") {
@@ -67,7 +71,21 @@ function setConnection(label, state = "idle") {
   elements.connection.textContent = label;
   elements.connection.className = `live-connection-state ${state}`;
   elements.headerStatus.textContent = label;
+  elements.headerStatus.className = `live-header-status live-status-${state}`;
+  renderLiveState();
   updateLease.flush();
+}
+
+function renderLiveState() {
+  const active = ["recording", "paused"].includes(phase);
+  $("#liveRecordingStatus").textContent = `录音：${phase === "recording" ? "正在录制" : phase === "paused" ? "已暂停" : phase === "finalizing" ? "正在收尾" : phase === "done" ? "已结束" : "未开始"}`;
+  $("#liveRecognitionStatus").textContent = `识别：${recognitionIssue ? "可能有缺失" : recognitionFinished ? "已结束" : active ? elements.connection.textContent : "等待确认"}`;
+  $("#liveDocumentStatus").textContent = `工程：${saving ? "正在保存" : savedTaskId && liveRevision <= liveSavedRevision ? "已保存至本机" : savedTaskId ? "有修改，需再次保存" : "尚未保存"}`;
+  const notice = $("#liveRecognitionNotice");
+  const completion = liveCompletion({ interrupted: recognitionIssue, confirmed: recognitionFinished, text: transcriptText() });
+  notice.hidden = phase !== "done" || !completion.warning;
+  notice.textContent = completion.warning;
+  $("#liveNextStepHint").textContent = phase !== "done" ? "结束录音后，可保存工程，再进入原文校订。" : !transcriptText().trim() ? "没有可用文字时，可以先保存录音；之后在素材导入中重新转写。" : "“保存为工程”保留当前录音与文稿；“保存并进入原文校订”会保存后继续下一步。";
 }
 
 function formatClock(milliseconds, withMillis = false) {
@@ -144,7 +162,7 @@ async function restoreRecording(id) {
     recoveryId = id; importedJob = null; savedTaskId = ""; liveRevision = 0; liveSavedRevision = 0;
     recordingChunks = []; recordingBlob = blob; recordingExtension = record.extension;
     recordingName = `recovered-${id}.${record.extension}`;
-    stoppedDuration = record.durationMs; phase = "done";
+    stoppedDuration = record.durationMs; phase = "done"; recognitionIssue = true; recognitionFinished = false; recognitionSettled = true; finalized = true;
     elements.topic.value = record.topic; elements.keywords.value = record.keywords;
     elements.provider.value = record.provider; elements.model.value = record.model; elements.language.value = record.language;
     elements.modelField.hidden = record.provider !== "alibaba";
@@ -153,7 +171,7 @@ async function restoreRecording(id) {
     elements.transcript.disabled = false; elements.pause.disabled = true; elements.stop.disabled = true;
     updateTimer(); enableResults(Boolean(blob?.size || transcriptText())); elements.downloadAudio.disabled = !blob?.size;
     backup = newBackup(); backup.attach(record);
-    setConnection("已恢复，待保存", "ready");
+    setConnection("已恢复落盘部分，请核对并保存", "idle");
     elements.saveState.textContent = audioWarning || "已恢复落盘部分；异常发生前尚未写入的末尾音频或文字可能缺失。请试听并保存为工程。";
     await refreshRecoveries();
     toast("已恢复本机录音与最近保存的文稿。 ");
@@ -210,6 +228,7 @@ function renderSegments() {
 
 function enableResults(enabled) {
   for (const button of [elements.exportTxt, elements.exportMd, elements.downloadAudio, elements.saveTask, elements.sendToReview]) button.disabled = !enabled;
+  elements.sendToReview.disabled = !enabled || !transcriptText().trim();
   elements.exportSrt.disabled = !enabled || !segments.length;
   elements.transcript.disabled = !enabled;
 }
@@ -299,6 +318,7 @@ function stopAudioGraph() {
 
 async function beginCapture() {
   clearTimeout(connectionTimer);
+  clearTimeout(finalizeTimer);finalizeTimer=null;
   if (backup) await backup.flush();
   const options = mediaRecorderOptions();
   const nextBackup = newBackup();
@@ -306,6 +326,7 @@ async function beginCapture() {
   backup?.stop(); backup = nextBackup;
   segments = []; partials.clear(); elements.transcript.value = ""; transcriptEdited = false;
   liveRevision = 0; liveSavedRevision = 0; stoppedDuration = null; recoveryId = nextRecoveryId;
+  recognitionIssue = false; recognitionFinished = false; recognitionSettled = false; finalized = false;
   startedAt = 0; pausedAt = 0; pausedTotal = 0;
   audioContext = new AudioContext({ latencyHint: "interactive" });
   const source = audioContext.createMediaStreamSource(stream);
@@ -429,9 +450,10 @@ async function startSession() {
         renderSegments();
         backup?.checkpoint();
       } else if (message.type === "finished") {
-        if (phase === "finalizing") phase = "done";
+        recognitionFinished = true; recognitionSettled = true;
         maybeFinish();
       } else if (message.type === "error") {
+        recognitionIssue = true;
         setConnection("识别异常", "error");
         toast(message.error || "实时识别失败，本机录音仍可保存。", "error");
         if (phase === "connecting") {
@@ -447,6 +469,7 @@ async function startSession() {
       }
     };
     socket.onerror = () => {
+      if (["recording", "paused", "finalizing"].includes(phase)) recognitionIssue = true;
       clearTimeout(connectionTimer);
       setConnection("连接失败", "error");
       toast("无法连接实时转写服务。", "error");
@@ -458,7 +481,8 @@ async function startSession() {
         toast("实时服务连接已断开，本机录音正在收尾。", "error");
         stopSession({ providerError: true });
       } else if (phase === "finalizing") {
-        phase = "done";
+        if (!recognitionFinished) recognitionIssue = true;
+        recognitionSettled = true;
         maybeFinish();
       }
     };
@@ -492,9 +516,19 @@ function togglePause() {
 
 function stopSession({ providerError = false } = {}) {
   if (!["recording", "paused"].includes(phase)) return;
+  if (providerError) recognitionIssue = true;
   const duration = elapsedMs();
   if (phase === "paused") pausedTotal += Date.now() - pausedAt;
   phase = "finalizing";
+  clearTimeout(finalizeTimer);
+  // A missing provider acknowledgement must not trap the local recording in
+  // a permanent busy state. Never treat this deadline as successful recognition.
+  finalizeTimer = setTimeout(() => {
+    if (phase !== "finalizing") return;
+    recognitionIssue = true; recognitionSettled = true;
+    if (!recordingBlob) setConnection("在线识别已停止，等待本机录音收尾…", "error");
+    maybeFinish();
+  }, 12000);
   stoppedDuration = duration;
   backup?.checkpoint();
   clearInterval(timer);
@@ -509,15 +543,19 @@ function stopSession({ providerError = false } = {}) {
     socket.send(JSON.stringify({ type: "commit" }));
     socket.send(JSON.stringify({ type: "stop" }));
   } else {
-    phase = "done";
+    recognitionSettled = true;
     maybeFinish();
   }
 }
 
 function maybeFinish() {
-  if (phase !== "done" || !recordingBlob) return;
+  if (phase === "finalizing" && recognitionSettled && recordingBlob) phase = "done";
+  if (phase !== "done" || !recordingBlob || finalized) return;
+  finalized = true;
+  clearTimeout(finalizeTimer);finalizeTimer=null;
   socket?.close();
-  setConnection("转写完成", "ready");
+  const completion = liveCompletion({ interrupted: recognitionIssue, confirmed: recognitionFinished, text: transcriptText() });
+  setConnection(completion.label, completion.state);
   elements.start.disabled = false;
   elements.provider.disabled = false;
   elements.model.disabled = false;
@@ -527,7 +565,7 @@ function maybeFinish() {
   enableResults(Boolean(recordingBlob?.size || transcriptText()));
   elements.saveState.textContent = "结果尚未保存到历史记录；可先人工修改或直接导出。";
   backup?.checkpoint();
-  toast("实时转写已结束，可以导出或送入人工修订。 ");
+  toast(completion.warning ? "录音已结束。转写可能不完整，请先保存录音并核对文字。" : "录音与识别已结束，请保存工程或进入原文校订。", completion.warning ? "error" : "info");
 }
 
 function safeBaseName() {
@@ -583,7 +621,7 @@ async function createHistoryTask() {
     transcriptionMeta: job ? {
       jobId: job.id, engine: job.engine, engineName: job.engineName, sourceName: recordingName,
       completedAt: now, srt: job.result?.srt || srtText(), approximateTimestamps: Boolean(job.result?.approximateTimestamps),
-      audioUrl: `/api/transcription/jobs/${job.id}/audio`, realtime: true
+      audioUrl: `/api/transcription/jobs/${job.id}/audio`, realtime: true, recognitionIncomplete: recognitionIssue || !recognitionFinished
     } : null
   };
   const response = await fetch(`/api/tasks/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(task) });
@@ -602,6 +640,7 @@ async function createHistoryTask() {
   elements.saveState.textContent = wasSaved
     ? "已更新历史任务；录音仍与此任务关联。"
     : "已保存为历史任务；录音会随任务一同保留。";
+  renderLiveState();
   return id;
 }
 
@@ -612,6 +651,7 @@ async function saveTask() {
     await createHistoryTask();
     toast("实时转写和录音已保存到历史记录。 ");
   } catch (error) {
+    elements.saveState.textContent = "保存失败，录音和文稿仍保留在当前页面，请重试保存。";
     toast(error.message || "保存失败。", "error");
   } finally {
     setSaving(false);
@@ -620,12 +660,14 @@ async function saveTask() {
 
 async function sendToReview() {
   if (saving) return;
+  if (!transcriptText().trim()) return toast("当前没有可用文字，请先保存录音，稍后重新转写。", "error");
   setSaving(true);
   try {
     const id = await createHistoryTask();
     leavingConfirmed = true;
     location.href = `/?task=${encodeURIComponent(id)}&source=live`;
   } catch (error) {
+    elements.saveState.textContent = "未能进入原文校订，请检查保存状态并重试；录音和文稿仍保留。";
     toast(error.message || "无法送入人工修订。", "error");
     setSaving(false);
   }
@@ -646,6 +688,8 @@ elements.transcript.oninput = () => {
   elements.wordCount.textContent = `${transcriptText().replace(/\s/g, "").length.toLocaleString()} 字 · 已人工编辑`;
   if (savedTaskId) elements.saveState.textContent = "文稿已有修改，请再次保存以更新历史任务。";
   backup?.checkpoint();
+  renderLiveState();
+  elements.sendToReview.disabled = saving || !transcriptText().trim();
 };
 elements.exportTxt.onclick = () => download(`${transcriptText()}\n`, "txt");
 elements.exportMd.onclick = () => download(`# ${safeBaseName()}\n\n${transcriptText().replace(/\n/g, "\n\n")}\n`, "md", "text/markdown;charset=utf-8");
@@ -653,7 +697,7 @@ elements.exportSrt.onclick = () => download(srtText(), "srt");
 elements.downloadAudio.onclick = () => recordingBlob && download(recordingBlob, recordingExtension, recordingBlob.type);
 elements.saveTask.onclick = saveTask;
 elements.sendToReview.onclick = sendToReview;
-for (const element of [elements.topic, elements.keywords]) element.addEventListener("input", () => { liveRevision++; if(savedTaskId) elements.saveState.textContent="课程语境已有修改，请再次保存。"; backup?.checkpoint(); updateLease.flush(); });
+for (const element of [elements.topic, elements.keywords]) element.addEventListener("input", () => { liveRevision++; if(savedTaskId) elements.saveState.textContent="课程语境已有修改，请再次保存。"; backup?.checkpoint(); renderLiveState(); updateLease.flush(); });
 for (const link of document.querySelectorAll('.live-topbar a')) link.addEventListener("click", event => {
   const current = protection();
   if (current.busy) { event.preventDefault(); toast(current.message, "error"); return; }

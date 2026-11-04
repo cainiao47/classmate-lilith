@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="/styles.css?v=0.21.1">
   <link rel="stylesheet" href="/live.css?v=0.21.1">
   <link rel="stylesheet" href="/workspace.css?v=0.23.1">
+  <link rel="stylesheet" href="/desktop-shell.css">
+  <link rel="stylesheet" href="/workspace-flow.css">
 </head>
 <body class="live-page">
   <header class="topbar live-topbar">
@@ -46,6 +48,8 @@
         <span id="liveConnectionState" class="live-connection-state idle">未连接</span>
       </div>
       <p id="liveBackupStatus" class="live-backup-status" role="status">开始录音后，每段音频会自动写入本机恢复目录。</p>
+      <div class="live-status-summary" aria-label="录音、识别与保存状态"><span id="liveRecordingStatus">录音：未开始</span><span id="liveRecognitionStatus">识别：等待开始</span><span id="liveDocumentStatus">文稿：尚未保存为工程</span></div>
+      <p id="liveRecognitionNotice" class="live-recognition-notice" role="status" hidden></p>
       <div class="live-form-grid">
         <label><span>在线识别服务</span><select id="liveProvider"><option value="alibaba">千问实时识别</option><option value="tencent">腾讯云实时 ASR</option><option value="openai">OpenAI Live Transcribe</option></select></label>
         <label><span>语言</span><select id="liveLanguage"><option value="zh">中文为主</option><option value="auto">自动识别</option><option value="en">英文</option></select></label>
@@ -56,7 +60,7 @@
         <label class="live-wide-field"><span>术语与人名提示</span><textarea id="liveKeywords" rows="4" placeholder="每行一个术语；会作为实时识别提示和后续校订语境"></textarea></label>
       </div>
 
-      <p class="live-privacy-note">第一次开始时浏览器会申请麦克风权限。API Key 不会发送给网页，始终由本机服务保存和使用。</p>
+        <p class="live-privacy-note">第一次开始时会申请麦克风权限。录音、在线识别和工程保存的状态分别显示；结束后请保存为工程。API Key 始终由本机服务保存和使用。</p>
     </section>
 
     <section class="live-transcript-card">
@@ -81,14 +85,16 @@
           <button id="liveDownloadAudio" class="text-button" type="button" disabled>下载本机录音</button>
         </div>
         <div class="live-task-actions">
-          <button id="liveSaveTask" class="secondary-button" type="button" disabled>保存为历史任务</button>
-          <button id="liveSendToReview" class="primary-button" type="button" disabled>送入人工修订 →</button>
+          <button id="liveSaveTask" class="secondary-button" type="button" disabled>保存为工程</button>
+          <button id="liveSendToReview" class="primary-button" type="button" disabled>保存并进入原文校订 →</button>
         </div>
       </div>
+      <p id="liveNextStepHint" class="live-save-state">结束录音后，可保存工程，再进入原文校订。</p>
       <p id="liveSaveState" class="live-save-state">尚未产生实时转写结果</p>
     </section>
   </main>
   <div id="liveToast" class="toast" hidden></div>
   <script type="module" src="/live.js?v=0.23.1"></script>
+  <script type="module" src="/modules/desktop-shell.js"></script>
 </body>
 </html>

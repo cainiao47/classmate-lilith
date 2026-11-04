@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { renderDocumentPreview } from "../public/modules/workspace-ui.js";
 
 function documentFixture(){
-  const doc={createElement(tag){return{tagName:tag.toUpperCase(),ownerDocument:doc,textContent:"",children:[],dataset:{},append(...items){this.children.push(...items)},replaceChildren(){this.children=[]}}}};
+  const doc={createElement(tag){return{tagName:tag.toUpperCase(),ownerDocument:doc,value:"",children:[],dataset:{},
+    get textContent(){return this.value+this.children.map(child=>typeof child==="string"?child:child.textContent).join("")},
+    set textContent(value){this.value=String(value);this.children=[]},
+    append(...items){this.children.push(...items)},replaceChildren(){this.children=[];this.value=""}}}};
   return doc;
 }
 test("document preview creates chapter navigation without interpreting model HTML",()=>{

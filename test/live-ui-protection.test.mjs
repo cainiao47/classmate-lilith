@@ -4,11 +4,12 @@ import fs from "node:fs/promises";
 import vm from "node:vm";
 import { webcrypto } from "node:crypto";
 import { liveProtection } from "../public/modules/workspace-lifecycle.js";
+import { liveCompletion } from "../public/modules/live-status.js";
 
 test("live page wires navigation, native exit and updates to the same dirty recording state",async()=>{
   const source=(await fs.readFile(new URL("../public/live.js",import.meta.url),"utf8")).replace(/^import .*;\r?\n/gm,"");
   const handlers=new Map(),elements=new Map();
-  const context=vm.createContext({liveProtection,crypto:webcrypto,URLSearchParams,location:{search:""},
+  const context=vm.createContext({liveProtection,liveCompletion,crypto:webcrypto,URLSearchParams,location:{search:""},
     document:{querySelector(selector){if(!elements.has(selector))elements.set(selector,{value:"",disabled:false,addEventListener(){},textContent:"",className:""});return elements.get(selector)},querySelectorAll(){return[]}},
     fetch:()=>new Promise(()=>{}),reportUpdateActivity:()=>({flush:async()=>{}}),setTimeout:()=>0,clearTimeout(){},
     addEventListener:(name,handler)=>handlers.set(name,handler)});
@@ -25,6 +26,35 @@ test("live page wires navigation, native exit and updates to the same dirty reco
   const save=vm.runInContext('createHistoryTask()',context);
   vm.runInContext('liveRevision=4',context);await save;
   assert.equal(vm.runInContext('protection().dirty',context),true,"edits arriving during a save must not be marked saved");
+  vm.runInContext('phase="done";recordingBlob={size:10};recognitionIssue=true;recognitionFinished=true;transcriptEdited=true;elements.transcript.value="部分文字";maybeFinish()',context);
+  assert.match(elements.get("#liveHeaderStatus").textContent,/不完整/);
+  assert.equal(elements.get("#liveRecognitionNotice").hidden,false);
+  vm.runInContext('finalized=false;recognitionIssue=false;recognitionFinished=false;maybeFinish()',context);
+  assert.match(elements.get("#liveHeaderStatus").textContent,/不完整/);
+  vm.runInContext('finalized=false;recognitionFinished=true;maybeFinish()',context);
+  assert.equal(elements.get("#liveRecognitionNotice").hidden,true);
+  vm.runInContext('elements.saveState.textContent="工程已保存";maybeFinish()',context);
+  assert.equal(elements.get("#liveSaveState").textContent,"工程已保存","late finish messages must not erase the saved status");
+});
+
+test("provider finalization has a deadline but local audio must finish before the workspace unlocks",async()=>{
+  const source=(await fs.readFile(new URL("../public/live.js",import.meta.url),"utf8")).replace(/^import .*;\r?\n/gm,"");
+  const elements=new Map(),timers=[];
+  const context=vm.createContext({liveProtection,liveCompletion,crypto:webcrypto,URLSearchParams,location:{search:""},WebSocket:{OPEN:1},
+    document:{querySelector(selector){if(!elements.has(selector))elements.set(selector,{value:"",disabled:true,style:{},addEventListener(){},textContent:"",className:""});return elements.get(selector)},querySelectorAll(){return[]}},
+    fetch:()=>new Promise(()=>{}),reportUpdateActivity:()=>({flush:async()=>{}}),
+    setTimeout:(callback,delay)=>{timers.push({callback,delay});return timers.length},clearTimeout(){},clearInterval(){},addEventListener(){}});
+  context.window=context;vm.runInContext(source,context);
+  vm.runInContext('phase="recording";transcriptEdited=true;elements.transcript.value="部分文字";socket={readyState:1,send(){},close(){}};stopSession()',context);
+  assert.equal(vm.runInContext('phase',context),"finalizing");
+  timers.findLast(timer=>timer.delay===12000).callback();
+  assert.equal(vm.runInContext('phase',context),"finalizing","an unfinished local recording must remain protected");
+  assert.equal(vm.runInContext('protection().busy',context),true);
+  vm.runInContext('recordingBlob={size:10};maybeFinish()',context);
+  assert.equal(vm.runInContext('phase',context),"done");
+  assert.equal(elements.get("#liveSaveTask").disabled,false);
+  assert.match(elements.get("#liveHeaderStatus").textContent,/不完整/);
+  assert.equal(elements.get("#liveRecognitionNotice").hidden,false);
 });
 
 test("recovery UI restores audio and text without recognition, saves their association, and protects later edits",async()=>{
@@ -32,7 +62,7 @@ test("recovery UI restores audio and text without recognition, saves their assoc
   const elements=new Map(),writes=[],backups=[];
   const element=()=>({value:"",disabled:false,hidden:false,style:{},className:"",textContent:"",children:[],classList:{toggle(){}},addEventListener(){},scrollIntoView(){},
     querySelector(){return element()},replaceChildren(){this.children=[]},append(...children){this.children.push(...children)}});
-  const context=vm.createContext({liveProtection,crypto:webcrypto,Blob,URLSearchParams,location:{search:""},confirm:()=>true,
+  const context=vm.createContext({liveProtection,liveCompletion,crypto:webcrypto,Blob,URLSearchParams,location:{search:""},confirm:()=>true,
     document:{querySelector(selector){if(!elements.has(selector))elements.set(selector,element());return elements.get(selector)},querySelectorAll(){return[]},createElement:element},
     fetch:()=>new Promise(()=>{}),reportUpdateActivity:()=>({flush:async()=>{}}),setTimeout:()=>0,clearTimeout(){},addEventListener(){},
     createLiveBackup(){const backup={checkpoints:0,stopped:false,attach(){},checkpoint(){this.checkpoints++},flush:async()=>true,complete:async()=>true,stop(){this.stopped=true}};backups.push(backup);return backup;}});
@@ -50,6 +80,7 @@ test("recovery UI restores audio and text without recognition, saves their assoc
   assert.equal(vm.runInContext('elapsedMs()',context),1234);
   assert.equal(vm.runInContext('protection().dirty',context),true);
   assert.equal(elements.get("#liveDownloadAudio").disabled,false);
+  assert.equal(elements.get("#liveRecognitionNotice").hidden,false,"a recovered recording must not claim recognition was complete");
   assert.equal(elements.get("#liveStart").disabled,true,"restoring local data must not require or automatically start an online provider");
   await vm.runInContext('createHistoryTask()',context);
   const task=JSON.parse(writes.find(item=>item.url.startsWith("/api/tasks/")).options.body);
@@ -63,5 +94,6 @@ test("recovery UI restores audio and text without recognition, saves their assoc
   assert.equal(backups[0].stopped,false);assert.equal(elements.get("#liveTranscript").value,"保存后的修改");
   elements.get("#liveTranscript").value="";elements.get("#liveTranscript").oninput();
   assert.equal(vm.runInContext('backupSnapshot().text',context),"","clearing edited text must not resurrect old recognition segments");
+  assert.equal(elements.get("#liveSendToReview").disabled,true,"audio-only results can be saved but cannot enter text proofreading");
   assert.ok(!writes.some(item=>/\/api\/(live$|correct|rewrite|transcription\/jobs$)/.test(item.url)));
 });

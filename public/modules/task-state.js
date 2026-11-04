@@ -66,5 +66,6 @@ export function restoreTaskState(task) {
   if (!task.proseMode) restored.proseMode = "detailed";
   if (!["faithful", "detailed", "lecture", "academic"].includes(restored.proseMode)) restored.proseMode = "academic";
   if (restored.proseStatus === "running") restored.proseStatus = "paused";
+  if (restored.status === "running") restored.status = "paused";
   return restored;
 }

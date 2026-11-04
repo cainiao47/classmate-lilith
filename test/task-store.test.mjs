@@ -20,6 +20,9 @@ test("task store owns task, version, and shared transcription lifecycle", async 
   await store.save(second, { title: "第二课", sourceText: "正文", transcriptionMeta: { jobId: "transcription-shared" } });
   assert.equal((await store.list()).length, 2);
   assert.equal((await store.list()).every((task) => task.hasAudio), true);
+  await store.save(first,{title:"第一课",sourceText:"正文",status:"completed",proseStatus:"paused",proseText:"部分整理稿",transcriptionMeta:{jobId:"transcription-shared"}});
+  const summary=(await store.list()).find(task=>task.id===first);
+  assert.equal(summary.proseStatus,"paused");assert.equal(summary.hasProse,true);
 
   await store.rename(first, "农村社会学课程工程");
   assert.equal((await store.get(first)).title, "农村社会学课程工程");

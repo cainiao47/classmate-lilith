@@ -1,3 +1,5 @@
+import { inlineRuns } from "./prose-format.js";
+
 export function createDialogFocus(doc = document) {
   const stack = [];
   const priorInert = new Map();
@@ -6,7 +8,7 @@ export function createDialogFocus(doc = document) {
     for (const child of doc.body.children) {
       if (top) {
         if (!priorInert.has(child)) priorInert.set(child, child.inert);
-        child.inert = child !== top.dialog && child !== top.backdrop && !child.contains(top.dialog);
+        child.inert = child !== top.dialog && child !== top.backdrop && !child.contains(top.dialog) && !child.hasAttribute?.("data-window-chrome");
       } else if (priorInert.has(child)) child.inert = priorInert.get(child);
     }
     if (!top) priorInert.clear();
@@ -40,30 +42,40 @@ export function createDialogFocus(doc = document) {
   };
 }
 
-// Render text nodes only: model output must never become executable HTML.
+// Only known elements and text nodes are created. Model output is never HTML.
 export function renderDocumentPreview(text, container, contents) {
   const doc = container.ownerDocument;
   container.replaceChildren(); contents.replaceChildren();
+  const inline = (target, value) => {
+    for (const run of inlineRuns(value)) {
+      if (run.bold) { const strong = doc.createElement("strong"); strong.textContent = run.text; target.append(strong); }
+      else target.append(run.text);
+    }
+  };
+  if (!String(text || "").trim()) {
+    const empty = doc.createElement("p"); empty.className = "document-empty"; empty.textContent = "当前文稿为空，可以切换到编辑继续输入。"; container.append(empty);
+    const hint = doc.createElement("p"); hint.textContent = "暂无目录"; contents.append(hint); return;
+  }
   let paragraph = [], list = null, code = null, headingIndex = 0;
-  const flush = () => { if (paragraph.length) { const p = doc.createElement("p"); p.textContent = paragraph.join("\n"); container.append(p); paragraph = []; } };
+  const flush = () => { if (paragraph.length) { const p = doc.createElement("p"); inline(p, paragraph.join("\n")); container.append(p); paragraph = []; } };
   for (const line of String(text || "").split(/\r?\n/)) {
     if (/^\s*```/.test(line)) { flush(); list = null; if (code) code = null; else { code = doc.createElement("pre"); container.append(code); } continue; }
     if (code) { code.textContent += line + "\n"; continue; }
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       flush(); list = null;
-      const h = doc.createElement(`h${heading[1].length}`); h.textContent = heading[2]; h.id = `prose-heading-${++headingIndex}`; container.append(h);
-      const a = doc.createElement("a"); a.href = `#${h.id}`; a.textContent = heading[2]; a.dataset.level = heading[1].length; contents.append(a); continue;
+      const h = doc.createElement(`h${heading[1].length}`); inline(h, heading[2]); h.id = `prose-heading-${++headingIndex}`; container.append(h);
+      const a = doc.createElement("a"); a.href = `#${h.id}`; a.textContent = h.textContent; a.dataset.level = heading[1].length; contents.append(a); continue;
     }
     const item = line.match(/^\s*(?:([-*+])|\d+[.)])\s+(.+)$/);
     if (item) {
       flush(); const tag = item[1] ? "UL" : "OL";
       if (!list || list.tagName !== tag) { list = doc.createElement(tag.toLowerCase()); container.append(list); }
-      const li = doc.createElement("li"); li.textContent = item[2]; list.append(li); continue;
+      const li = doc.createElement("li"); inline(li, item[2]); list.append(li); continue;
     }
     list = null;
     if (!line.trim()) { flush(); continue; }
-    if (/^>\s?/.test(line)) { flush(); const quote = doc.createElement("blockquote"); quote.textContent = line.replace(/^>\s?/, ""); container.append(quote); continue; }
+    if (/^>\s?/.test(line)) { flush(); const quote = doc.createElement("blockquote"); inline(quote, line.replace(/^>\s?/, "")); container.append(quote); continue; }
     paragraph.push(line);
   }
   flush();

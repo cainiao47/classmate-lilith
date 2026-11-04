@@ -19,23 +19,23 @@ test("recording and review areas expose provider-aware account status queries", 
   assert.match(html, /id="queryTextAccountStatus"/);
   assert.match(html, /id="reviewAccountStatusValue"/);
   assert.match(html, /id="settingsTextAccountStatusButton"/);
-  assert.match(html, /<span class="step">3<\/span>\s*<div><h2>原文修订<\/h2>/);
+  assert.match(html, /<span class="step">2<\/span>\s*<div><h2>原文校订<\/h2>/);
 });
 
 test("project actions are grouped with history at the far right", () => {
   assert.match(html, /id="apiSettingsButton" class="header-button settings-action"/);
   assert.match(html, /class="project-actions"[\s\S]*?id="newTaskButton"[\s\S]*?id="saveVersionButton"[\s\S]*?id="historyButton"/);
   assert.match(html, />新建工程<|>＋<\/span>新建工程/);
-  assert.match(html, />保存版本</);
-  assert.match(html, /工程历史/);
+  assert.match(html, />保留当前版本</);
+  assert.match(html, /我的工程/);
   assert.doesNotMatch(html, /本地运行|local-badge/);
   assert.match(css, /\.header-button\.settings-action/);
   assert.match(css, /\.header-button\.save-project-action/);
 });
 
 test("history drawer exposes prominent project cards and a reusable naming dialog", () => {
-  assert.match(html, /id="historyDrawer"[\s\S]*?<h2>工程历史<\/h2>/);
-  assert.match(html, /当前工程的保存版本/);
+  assert.match(html, /id="historyDrawer"[\s\S]*?<h2>我的工程<\/h2>/);
+  assert.match(html, /当前工程的历史版本/);
   assert.match(html, /id="nameDialog"/);
   assert.match(html, /id="nameDialogInput"/);
   assert.match(css, /\.project-history-item \{ min-height: 88px;/);

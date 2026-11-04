@@ -10,29 +10,35 @@ import { createSaveQueue } from "./modules/save-queue.js";
 import { readNdjson } from "./modules/ndjson-stream.js";
 import { createWorkspaceGate, resultValidity } from "./modules/workspace-lifecycle.js";
 import { createDialogFocus, renderDocumentPreview } from "./modules/workspace-ui.js";
+import { installWorkspaceFlow, processingActionLabel, projectProgressLabel } from "./modules/workspace-flow.js";
+import { copyDocumentText, fetchWordDocument } from "./modules/document-actions.js";
 
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const clone = v => JSON.parse(JSON.stringify(v));
 const PRICE = {"deepseek-flash":{input:.30,output:1.20},"deepseek-v4-pro":{input:1.32,output:3.96}};
 const CNY_PER_USD = 7.20;
 const UNCERTAINTY_MARK = "⟦存疑⟧";
-let state=freshState(), saveTimer, runtimeLogTimer, runtimeLogOffset=0, runtimeLogFile="", taskRevision=0, savedRevision=0, savePending=Promise.resolve(), nameDialogResolver=null;
-let workspaceChanging=false, uploadInProgress=false, proseView="read", previewSource=null, settingsBaseline=null;
+let state=freshState(), saveTimer, runtimeLogTimer, runtimeLogOffset=0, runtimeLogFile="", taskRevision=0, savedRevision=0, savePending=Promise.resolve(), nameDialogResolver=null, nameDialogNeedsValue=true;
+let workspaceChanging=false, uploadInProgress=false, textImporting=false, proseView="read", reviewView="compare", exportingReview=false, exportingProse=false, previewSource=null, settingsBaseline=null, workspaceFlow=null;
 const persistedTasks=new Set();
 const el={background:$("#background"),glossary:$("#glossary"),sourceText:$("#sourceText"),fileInput:$("#fileInput"),polishButton:$("#polishButton"),cancelButton:$("#cancelButton"),progressPanel:$("#progressPanel"),progressBar:$("#progressBar"),progressValue:$("#progressValue"),progressTitle:$("#progressTitle"),progressHint:$("#progressHint"),resultCard:$("#resultCard"),resultContent:$("#resultContent"),correctedText:$("#correctedText"),originalText:$("#originalText"),uncertaintyList:$("#uncertaintyList"),changesList:$("#changesList"),uncertainCount:$("#uncertainCount"),changeCount:$("#changeCount"),resultSummary:$("#resultSummary"),toast:$("#toast"),textStats:$("#textStats"),reviewProgressText:$("#reviewProgressText"),reviewProgressBar:$("#reviewProgressBar"),previousReview:$("#previousReview"),nextReview:$("#nextReview"),editedState:$("#editedState"),costEstimate:$("#costEstimate"),usageSummary:$("#usageSummary"),undoButton:$("#undoButton"),restoreDraftButton:$("#restoreDraftButton"),exportMenu:$("#exportMenu"),saveStatus:$("#saveStatus"),historyDrawer:$("#historyDrawer"),drawerBackdrop:$("#drawerBackdrop"),historyList:$("#historyList"),apiSettingsDialog:$("#apiSettingsDialog"),settingsBackdrop:$("#settingsBackdrop"),apiSettingsState:$("#apiSettingsState"),taskTerminologyGroups:$("#taskTerminologyGroups"),terminologySnapshotState:$("#terminologySnapshotState"),audioInput:$("#audioInput"),audioFileName:$("#audioFileName"),audioFileMeta:$("#audioFileMeta"),transcriberStatus:$("#transcriberStatus"),transcriptionEngine:$("#transcriptionEngine"),transcriptionModel:$("#transcriptionModel"),transcriptionModelField:$("#transcriptionModelField"),transcriptionLanguage:$("#transcriptionLanguage"),transcribeButton:$("#transcribeButton"),cancelTranscription:$("#cancelTranscription"),transcriptionProgress:$("#transcriptionProgress"),transcriptionStage:$("#transcriptionStage"),transcriptionPercent:$("#transcriptionPercent"),transcriptionBar:$("#transcriptionBar"),transcriptionLog:$("#transcriptionLog"),transcriptionReview:$("#transcriptionReview"),transcriptionText:$("#transcriptionText"),transcriptionAudio:$("#transcriptionAudio"),transcriptionSegments:$("#transcriptionSegments"),followPlayback:$("#followPlayback"),reviewAudioDock:$("#reviewAudioDock"),reviewAudio:$("#reviewAudio"),reviewAudioHint:$("#reviewAudioHint"),acceptTranscription:$("#acceptTranscription"),copyTranscription:$("#copyTranscription"),proseMode:$("#proseMode"),proseButton:$("#proseButton"),proseCancel:$("#proseCancel"),copyProse:$("#copyProse"),exportProse:$("#exportProse"),proseStateBadge:$("#proseStateBadge"),proseProgress:$("#proseProgress"),proseProgressTitle:$("#proseProgressTitle"),proseProgressValue:$("#proseProgressValue"),proseProgressBar:$("#proseProgressBar"),proseProgressHint:$("#proseProgressHint"),proseEmpty:$("#proseEmpty"),proseCostEstimate:$("#proseCostEstimate"),proseResult:$("#proseResult"),proseText:$("#proseText"),proseUsage:$("#proseUsage"),runtimeLogDialog:$("#runtimeLogDialog"),runtimeLogBackdrop:$("#runtimeLogBackdrop"),runtimeLogText:$("#runtimeLogText"),runtimeLogFile:$("#runtimeLogFile"),runtimeLogState:$("#runtimeLogState"),runtimeLogFollow:$("#runtimeLogFollow")};
 const dialogFocus=createDialogFocus(document);
 const workspaceGate=createWorkspaceGate({busy:()=>workspaceBusy(),save:async()=>{clearTimeout(saveTimer);await saveTask()},
   pending:value=>{workspaceChanging=value;syncWorkspaceControls()},notify:message=>toast(message,"error")});
-function workspaceBusy(){return Boolean(state.running||state.proseRunning||activeTranscriptionId||uploadInProgress)}
+function workspaceBusy(){return Boolean(state.running||state.proseRunning||activeTranscriptionId||uploadInProgress||textImporting)}
 function syncWorkspaceControls(){
   const locked=workspaceChanging||workspaceBusy();
-  for(const id of ["newTaskButton","historyButton","apiSettingsButton","clearText","fileInput","audioInput","transcriptionEngine","transcriptionModel","transcriptionLanguage","transcriptionSettingsButton","acceptTranscription"])$("#"+id).disabled=locked;
+  for(const id of ["newTaskButton","historyButton","apiSettingsButton","clearText","importTextButton","fileInput","audioInput","transcriptionEngine","transcriptionModel","transcriptionLanguage","transcriptionSettingsButton","acceptTranscription"])$("#"+id).disabled=locked;
   [el.sourceText,el.background,el.glossary,el.correctedText].forEach(input=>input.readOnly=locked);
   el.transcriptionText.readOnly=locked;el.proseMode.disabled=locked;
   $$('#contextSettings input[type="checkbox"]').forEach(input=>input.disabled=locked);$("#refreshTerminologySnapshot").disabled=locked;
   $$('input[name=mode]').forEach(input=>input.disabled=locked);
   el.transcribeButton.disabled=locked||!selectedAudio||!providerConfigured(onlineSettings,el.transcriptionEngine.value);
   el.polishButton.disabled=locked;el.proseButton.disabled=locked||!state.workingText||state.status!=="completed"||reviewIsStale();
+  const reviewLabel=processingActionLabel({kind:"review",running:state.running,status:state.status,sourceMatches:state.reviewSourceHash===reviewInputHash(),hasText:Boolean(state.workingText),hasProgress:state.correctedChunks.some(Boolean)||state.failedIndex!==null||Boolean(state.failedStage)});
+  if(el.polishButton.lastChild)el.polishButton.lastChild.textContent=` ${reviewLabel}`;else el.polishButton.textContent=reviewLabel;
+  syncDocumentActionControls();
+  workspaceFlow?.refresh();
 }
 function reviewIsStale(){return resultValidity({hasReview:!!state.workingText,status:state.status,savedHash:state.reviewSourceHash,currentHash:reviewInputHash()}).reviewStale}
 function renderResultValidity(){
@@ -42,10 +48,12 @@ function renderResultValidity(){
   if(stale)el.resultSummary.textContent="校订稿需要更新";
   else if(state.running)el.resultSummary.textContent="校订正在进行，以下为已完成部分";
   else if(state.workingText&&state.status!=="completed")el.resultSummary.textContent="校订尚未完成，已保留当前结果";
-  else if(state.workingText)el.resultSummary.textContent=state.uncertainties.length?`校订完成，有 ${state.uncertainties.length} 处建议核对`:"校订完成，未发现明显疑点";
+  else if(state.workingText){const pending=pendingReviewIndices().length;el.resultSummary.textContent=pending?`校订完成，还有 ${pending} 项待核对`:state.uncertainties.length?"待确认项已核对完成":"校订完成，未发现明显疑点"}
+  el.uncertainCount.textContent=pendingReviewIndices().length;
   $("#resultStatusLabel").textContent=stale?"原文已变化":state.running?"处理中":state.status==="completed"?"校订完成":"尚未完成";
   const name=state.projectTitle?.trim()||taskTitle();$("#currentProjectTitle").textContent=name;$("#currentProjectTitle").title=name;
   $("#currentProjectStage").textContent=state.running?"正在校订":state.proseRunning?"正在整理":stale?"原文已变化":state.proseText?"书面整理":state.workingText?"人工复核":"原文修订";
+  workspaceFlow?.refresh();
 }
 function refreshProsePreview(){
   const text=state.proseText||"";
@@ -53,13 +61,48 @@ function refreshProsePreview(){
   $("#proseReadView").hidden=proseView!=="read";el.proseText.hidden=proseView!=="edit";
   $("#readProseButton").setAttribute("aria-pressed",String(proseView==="read"));$("#editProseButton").setAttribute("aria-pressed",String(proseView==="edit"));
 }
+function syncDocumentActionControls(){
+  const review=Boolean(String(state.workingText||"").trim()),prose=Boolean(String(state.proseText||"").trim());
+  $("#copyResult").disabled=!review;el.copyProse.disabled=!prose;$("#copyProsePlain").disabled=!prose;
+  el.copyTranscription.disabled=!el.transcriptionText.value.trim();
+  $("#downloadResult").disabled=!review||exportingReview;el.exportProse.disabled=!prose||exportingProse;
+  $("#downloadResult").textContent=exportingReview?"导出中…":"导出 ▾";el.exportProse.textContent=exportingProse?"导出中…":"导出 ▾";
+}
+function setDocumentActionStatus(scope,message,kind="idle",owner=state.taskId){
+  if(owner!==state.taskId)return;
+  const notice=$(`#${scope}DocumentStatus`);notice.textContent=message;notice.hidden=!message;notice.dataset.state=kind;
+}
+async function copyTextAction(text,message,scope=null){
+  const owner=state.taskId;
+  try{await copyDocumentText(text,globalThis.navigator?.clipboard);if(scope)setDocumentActionStatus(scope,message,"success",owner);toast(message);return true}
+  catch(error){const message=`复制未完成：${error.message}。可尝试导出或手动复制。`;if(scope)setDocumentActionStatus(scope,message,"error",owner);toast(message,"error");return false}
+}
+function setReviewView(mode,{focus=true}={}){
+  reviewView=mode;document.body.classList.toggle("review-edit-only",mode==="edit");
+  $("#reviewCompareButton").setAttribute("aria-pressed",String(mode==="compare"));$("#reviewEditButton").setAttribute("aria-pressed",String(mode==="edit"));
+  $("#reviewViewHint").textContent=mode==="edit"?"正在编辑校订稿；原文仍保留，可随时切回对照":"原始转写与校订稿同步滚动；校订稿可直接编辑";
+  if(mode==="edit"){if(focus){el.correctedText.focus({preventScroll:true});el.correctedText.scrollIntoView({block:"center",behavior:"auto"})}}
+  else requestAnimationFrame(()=>{syncing=true;el.originalText.scrollTop=paneRatio(el.correctedText)*Math.max(0,el.originalText.scrollHeight-el.originalText.clientHeight);scrollSyncOffset=0;requestAnimationFrame(()=>syncing=false)});
+}
 const taskSaveQueue=createSaveQueue({
   save:async({taskId,payload})=>{const r=await fetch(`/api/tasks/${taskId}`,{method:"POST",headers:{"Content-Type":"application/json"},body:payload});if(!r.ok)throw Error("工程保存失败，请重试保存后再安装更新。")},
-  onState:(status)=>{el.saveStatus.textContent=status==="saved"?"工程已自动保存":"工程保存失败"}
+  onState:(status)=>{if(status==="failed")setSaveState("failed")}
 });
+function setSaveState(status){
+  el.saveStatus.dataset.state=status;
+  el.saveStatus.textContent={empty:"空白工程，尚无内容",saving:"正在保存…",saved:"已保存至本机",failed:"保存失败，修改尚未落盘"}[status];
+  $("#retrySaveButton").hidden=status!=="failed";
+}
 function toast(message,type="success"){el.toast.textContent=message;el.toast.className=`toast show ${type==="error"?"error":""}`;clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.toast.className="toast",3200)}
 function closeNameDialog(value=null){$("#nameDialog").hidden=true;$("#nameDialogBackdrop").hidden=true;dialogFocus.close($("#nameDialog"));const resolve=nameDialogResolver;nameDialogResolver=null;resolve?.(value)}
-function requestName({title,description,value="",confirmText="保存"}){if(nameDialogResolver)closeNameDialog();$("#nameDialogTitle").textContent=title;$("#nameDialogDescription").textContent=description;$("#nameDialogInput").value=value;$("#confirmNameDialog").textContent=confirmText;$("#nameDialog").hidden=false;$("#nameDialogBackdrop").hidden=false;dialogFocus.open($("#nameDialog"),$("#nameDialogBackdrop"),()=>closeNameDialog(),$("#nameDialogInput"));return new Promise(resolve=>{nameDialogResolver=resolve;$("#nameDialogInput").select()})}
+function requestName({title,description,value="",confirmText="保存",requireName=true}){
+  if(nameDialogResolver)closeNameDialog();nameDialogNeedsValue=requireName;
+  $("#nameDialogTitle").textContent=title;$("#nameDialogDescription").textContent=description;
+  $("#nameDialogInput").value=value;$("#nameDialogField").hidden=!requireName;$("#confirmNameDialog").textContent=confirmText;
+  $("#nameDialog").hidden=false;$("#nameDialogBackdrop").hidden=false;
+  dialogFocus.open($("#nameDialog"),$("#nameDialogBackdrop"),()=>closeNameDialog(),requireName?$("#nameDialogInput"):$("#cancelNameDialog"));
+  return new Promise(resolve=>{nameDialogResolver=resolve;if(requireName)$("#nameDialogInput").select()});
+}
 const mode=()=>$("input[name=mode]:checked").value;
 function estimateTokens(text){const c=(text.match(/[\u3400-\u9fff]/g)||[]).length;return Math.ceil(c*.6+Math.max(0,text.length-c)/4)}
 const textProvider=()=>onlineSettings?.textProvider||"deepseek";
@@ -75,17 +118,17 @@ const taskTitle=()=>el.background.value.trim()||state.transcriptionMeta?.sourceN
 function reviewInputHash(){return hashText(JSON.stringify({text:el.sourceText.value,background:el.background.value,glossary:effectiveGlossary(),mode:mode(),provider:textProvider()}))}
 function markReviewInputChanged(){if(state.reviewSourceHash&&state.workingText){if(state.reviewSourceHash!==reviewInputHash())state.status="stale";else if(state.status==="stale"&&state.consistencyDone)state.status="completed"}renderProse();queueSave()}
 function taskData(){return{schemaVersion:TASK_SCHEMA_VERSION,id:state.taskId,projectTitle:state.projectTitle||"",title:state.projectTitle?.trim()||taskTitle(),status:state.status,sourceText:el.sourceText.value,background:el.background.value,glossary:el.glossary.value,terminologyGroupIds:state.terminologyGroupIds,terminologySnapshot:state.terminologySnapshot,textProvider:textProvider(),model:textModel(),mode:mode(),transcriptionDraft:state.transcriptionDraft,transcriptionMeta:state.transcriptionMeta,transcriptionEngine:el.transcriptionEngine.value,transcriptionModel:el.transcriptionModel.value,correctedChunks:state.correctedChunks,workingText:state.workingText,modelDraft:state.modelDraft,uncertainties:state.uncertainties,changes:state.changes,decisions:state.decisions,userEdited:state.userEdited,consistencyDone:state.consistencyDone,reviewSourceHash:state.reviewSourceHash,usage:state.usage,totalChunks:state.totalChunks,failedIndex:state.failedIndex,failedStage:state.failedStage,proseStatus:state.proseStatus,proseMode:state.proseMode,proseGeneratedMode:state.proseGeneratedMode,proseLecturePlan:state.proseLecturePlan,proseChunks:state.proseChunks,prosePlan:state.prosePlan,proseProtectedFacts:state.proseProtectedFacts,proseText:state.proseText,proseTotalChunks:state.proseTotalChunks,proseFailedIndex:state.proseFailedIndex,proseUsage:state.proseUsage,proseSourceHash:state.proseSourceHash,proseUserEdited:state.proseUserEdited}}
-function queueSave(){taskRevision++;clearTimeout(saveTimer);el.saveStatus.textContent="正在保存…";saveTimer=setTimeout(()=>saveTask().catch(()=>{}),700);renderResultValidity()}
+function queueSave(){taskRevision++;clearTimeout(saveTimer);setSaveState("saving");saveTimer=setTimeout(()=>saveTask().catch(()=>{}),700);renderResultValidity()}
 function saveTask(strict=true){
-  const revision=taskRevision,task=taskData(),empty=!el.sourceText.value.trim()&&!state.transcriptionDraft.trim()&&!state.workingText&&!el.background.value.trim();
+  const revision=taskRevision,task=taskData(),empty=!el.sourceText.value.trim()&&!state.transcriptionDraft.trim()&&!state.workingText&&!el.background.value.trim()&&!el.glossary.value.trim();
   const save=savePending.catch(()=>{}).then(async()=>{
-    if(empty&&!persistedTasks.has(task.id)){savedRevision=Math.max(savedRevision,revision);el.saveStatus.textContent="尚未保存";return}
+    if(empty&&!persistedTasks.has(task.id)){savedRevision=Math.max(savedRevision,revision);setSaveState(savedRevision<taskRevision?"saving":"empty");return}
     await taskSaveQueue.enqueue({taskId:task.id,payload:JSON.stringify(task)});
     persistedTasks.add(task.id);
-    savedRevision=Math.max(savedRevision,revision);el.saveStatus.textContent=savedRevision<taskRevision?"正在保存…":"已自动保存";
+    savedRevision=Math.max(savedRevision,revision);setSaveState(savedRevision<taskRevision?"saving":"saved");
   });
   savePending=save;
-  return save.catch(error=>{el.saveStatus.textContent="保存失败";if(strict)throw error});
+  return save.catch(error=>{setSaveState("failed");if(strict)throw error});
 }
 
 const ACCOUNT_PROVIDER_NAMES={deepseek:"DeepSeek",tencent:"腾讯云",alibaba:"千问 API 平台",openai:"OpenAI"};
@@ -94,9 +137,9 @@ function formatAccountBalance(info){const value=Number(info.total);if(!Number.is
 function resetAccountStatus(scope,provider){const controls=accountStatusElements(scope),name=ACCOUNT_PROVIDER_NAMES[provider]||"在线服务";if(controls.label)controls.label.textContent=`${name} 账户状态`;controls.value.textContent="尚未查询";controls.value.title="";if(controls.hint)controls.hint.textContent=provider==="deepseek"||provider==="tencent"?"可查询账户可用余额":"将验证 API Key；余额请前往官方账单页面查看";controls.link.hidden=true;controls.link.removeAttribute("href")}
 async function queryAccountStatus(scope,provider){const controls=accountStatusElements(scope),name=ACCOUNT_PROVIDER_NAMES[provider]||provider;controls.button.disabled=true;controls.button.dataset.label=controls.button.textContent;controls.button.textContent="查询中…";controls.link.hidden=true;try{const r=await fetch("/api/account-status",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({provider})}),p=await r.json().catch(()=>({}));if(!r.ok)throw Error(p.error||"账户状态查询失败");let summary,detail;if(p.type==="balance"){const balances=(p.balances||[]).slice().sort((a,b)=>(a.currency==="CNY"?-1:1)-(b.currency==="CNY"?-1:1));summary=balances.length?balances.map(formatAccountBalance).join(" · "):"无余额信息";detail=balances.map(x=>`${x.currency||"余额"}${x.toppedUp||x.granted?`：充值 ${x.toppedUp||"0"}，赠送 ${x.granted||"0"}`:""}`).join("\n");if(!p.available)detail=`${detail}${detail?"\n":""}账户当前可能无法继续调用` }else{summary="API Key 有效";detail=`${name} 不允许使用当前模型 API Key 读取账户余额，请在官方账单页面查看。`}controls.value.textContent=summary;controls.value.title=detail;if(controls.hint)controls.hint.textContent=p.type==="balance"?(p.available?"余额信息刚刚更新":"余额已返回，但账户当前可能不可用"):"密钥验证通过；查询过程不会产生模型费用";if(p.dashboardUrl){controls.link.href=p.dashboardUrl;controls.link.hidden=false}toast(p.type==="balance"?`${name} 余额已更新`:`${name} API Key 验证通过`)}catch(error){controls.value.textContent="查询失败";controls.value.title=error.message;if(controls.hint)controls.hint.textContent=error.message||"请检查已保存的凭据";toast(error.message||"账户状态查询失败","error")}finally{controls.button.disabled=false;controls.button.textContent=controls.button.dataset.label||"查询账户状态";delete controls.button.dataset.label}}
 
-function resetResultView(){el.resultCard.classList.add("empty");el.resultContent.hidden=true}
+function resetResultView(){el.resultCard.classList.add("empty");el.resultContent.hidden=true;setDocumentActionStatus("review","");setDocumentActionStatus("prose","")}
 function resetResults(){const keep={taskId:state.taskId,projectTitle:state.projectTitle,transcriptionDraft:state.transcriptionDraft,transcriptionMeta:state.transcriptionMeta,transcriptionEngine:state.transcriptionEngine,transcriptionModel:state.transcriptionModel,terminologyGroupIds:state.terminologyGroupIds,terminologySnapshot:state.terminologySnapshot};state={...freshState(),...keep};activeReviewIndex=-1;resetResultView()}
-function setRunning(on){state.running=on;el.polishButton.disabled=on;el.cancelButton.hidden=!on;el.polishButton.lastChild.textContent=on?" 校订中…":(state.failedIndex!==null||state.status==="paused"||state.failedStage?" 继续校订":" 开始校订");el.progressPanel.hidden=!(on||state.failedIndex!==null||state.status==="paused"||state.failedStage);renderProse()}
+function setRunning(on){state.running=on;el.polishButton.disabled=on;el.cancelButton.hidden=!on;el.progressPanel.hidden=!(on||state.failedIndex!==null||state.status==="paused"||state.failedStage);renderProse()}
 function setProgress(done,total,hint){const p=total?Math.round(done/total*100):0;el.progressBar.style.width=`${p}%`;el.progressValue.textContent=`${p}%`;el.progressTitle.textContent=done?`已完成 ${done}/${total} 段`:"正在准备校订…";el.progressHint.textContent=hint||(done<total?"正在结合语境核对人物、术语和断句":"正在进行全文一致性检查")}
 function addUsage(u){if(u)for(const k of Object.keys(state.usage))state.usage[k]+=Number(u[k]||0)}
 const completed=()=>state.correctedChunks.map((v,i)=>v?i:null).filter(v=>v!==null);
@@ -110,7 +153,7 @@ function findRange(item){const needle=item.current_text||item.suggestion||item.o
 function findOriginalRange(item){const source=el.sourceText.value,needle=String(item.original||item.current_text||item.suggestion||"");if(!needle)return null;const context=String(item.context||"");if(context){const contextAt=source.indexOf(context),within=context.indexOf(needle);if(contextAt>=0&&within>=0)return[contextAt+within,contextAt+within+needle.length]}const expected=state.workingText.length?Number(item.globalStart||0)/state.workingText.length*source.length:0;let best=null,at=0;while((at=source.indexOf(needle,at))>=0){const score=Math.abs(at-expected);if(!best||score<best.score)best={start:at,end:at+needle.length,score};at+=Math.max(1,needle.length)}return best?[best.start,best.end]:null}
 function paneRatio(pane){return pane.scrollTop/Math.max(1,pane.scrollHeight-pane.clientHeight)}
 function scrollTextareaToRange(textarea,start,end){const style=getComputedStyle(textarea),mirror=document.createElement("div"),marker=document.createElement("span"),suffixStart=end>start?end:start;for(const key of["fontFamily","fontSize","fontWeight","fontStyle","letterSpacing","lineHeight","paddingTop","paddingRight","paddingBottom","paddingLeft","borderTopWidth","borderRightWidth","borderBottomWidth","borderLeftWidth","boxSizing","tabSize","wordBreak","overflowWrap"]){mirror.style[key]=style[key]}mirror.style.position="fixed";mirror.style.visibility="hidden";mirror.style.pointerEvents="none";mirror.style.left="-10000px";mirror.style.top="0";mirror.style.width=`${textarea.getBoundingClientRect().width}px`;mirror.style.whiteSpace="pre-wrap";marker.textContent=end>start?textarea.value.slice(start,end):"\u200b";mirror.append(document.createTextNode(textarea.value.slice(0,start)),marker,document.createTextNode(textarea.value.slice(suffixStart)));document.body.append(mirror);textarea.focus({preventScroll:true});textarea.setSelectionRange(start,end);const markerMiddle=marker.offsetTop+marker.offsetHeight/2,mirrorHeight=Math.max(1,mirror.scrollHeight),target=markerMiddle/mirrorHeight*textarea.scrollHeight-textarea.clientHeight/2;textarea.scrollTop=Math.max(0,Math.min(textarea.scrollHeight-textarea.clientHeight,target));mirror.remove()}
-function locateOriginal(item){const originalRange=findOriginalRange(item);if(!originalRange)return toast("原始转写中没有找到对应片段，可根据卡片中的上下文人工搜索","error");requestAnimationFrame(()=>{const source=el.sourceText.value,[start,end]=originalRange,mark=document.createElement("mark");mark.className="source-highlight";mark.textContent=source.slice(start,end);el.originalText.replaceChildren(document.createTextNode(source.slice(0,start)),mark,document.createTextNode(source.slice(end)));syncing=true;const box=mark.getBoundingClientRect(),pane=el.originalText.getBoundingClientRect(),delta=box.top-pane.top-pane.height/2+box.height/2;el.originalText.scrollTop=Math.max(0,el.originalText.scrollTop+delta);let correctedRange=findRange(item),approximate=false;if(!correctedRange&&state.workingText){const position=Math.round(start/Math.max(1,source.length)*state.workingText.length);correctedRange=[position,position];approximate=true}if(correctedRange)scrollTextareaToRange(el.correctedText,correctedRange[0],correctedRange[1]);scrollSyncOffset=paneRatio(el.originalText)-paneRatio(el.correctedText);requestAnimationFrame(()=>requestAnimationFrame(()=>syncing=false));toast(approximate?"原文已高亮；校订稿已跳到近似位置":"已同步定位原始转写和校订定稿")})}
+function locateOriginal(item){const originalRange=findOriginalRange(item);if(!originalRange)return toast("原始转写中没有找到对应片段，可根据卡片中的上下文人工搜索","error");setReviewView("compare",{focus:false});requestAnimationFrame(()=>{const source=el.sourceText.value,[start,end]=originalRange,mark=document.createElement("mark");mark.className="source-highlight";mark.textContent=source.slice(start,end);el.originalText.replaceChildren(document.createTextNode(source.slice(0,start)),mark,document.createTextNode(source.slice(end)));syncing=true;const box=mark.getBoundingClientRect(),pane=el.originalText.getBoundingClientRect(),delta=box.top-pane.top-pane.height/2+box.height/2;el.originalText.scrollTop=Math.max(0,el.originalText.scrollTop+delta);let correctedRange=findRange(item),approximate=false;if(!correctedRange&&state.workingText){const position=Math.round(start/Math.max(1,source.length)*state.workingText.length);correctedRange=[position,position];approximate=true}if(correctedRange)scrollTextareaToRange(el.correctedText,correctedRange[0],correctedRange[1]);scrollSyncOffset=paneRatio(el.originalText)-paneRatio(el.correctedText);requestAnimationFrame(()=>requestAnimationFrame(()=>syncing=false));toast(approximate?"原文已高亮；校订稿已跳到近似位置":"已同步定位原始转写和校订定稿")})}
 function replaceIssue(i,replacement){const item=state.uncertainties[i],r=findRange(item);if(!r)return false;pushUndo();const[start,end]=r,delta=replacement.length-(end-start);state.workingText=state.workingText.slice(0,start)+replacement+state.workingText.slice(end);item.current_text=replacement;item.globalStart=start;item.globalEnd=start+replacement.length;state.uncertainties.forEach((x,j)=>{if(j===i)return;const xs=Number(x.globalStart),xe=Number(x.globalEnd);if(xs>=end){x.globalStart+=delta;x.globalEnd+=delta}else if(Math.max(start,xs)<Math.min(end,xe)&&!state.decisions[j]){x._coveredBy=i;state.decisions[j]={choice:"covered",replacement:"",coveredBy:i}}});reanchor();return true}
 
 function option(i,value,title,content,checked=false){const l=document.createElement("label");l.className="review-option";const r=document.createElement("input");r.type="radio";r.name=`review-${i}`;r.value=value;r.checked=checked;const s=document.createElement("span"),b=document.createElement("b");b.textContent=title;s.append(b,document.createTextNode(content||"—"));l.append(r,s);return l}
@@ -129,7 +172,18 @@ function addProseUsage(usage){if(usage)for(const key of Object.keys(state.proseU
 function proseInputHash(){return hashText(state.proseMode==="academic"?JSON.stringify([1,state.workingText,el.background.value,effectiveGlossary(state.workingText),taskTitle()]):state.workingText)}
 function proseIsStale(){return resultValidity({hasReview:!!state.workingText,status:state.status,savedHash:state.reviewSourceHash,currentHash:reviewInputHash(),hasProse:!!state.proseText,proseChanged:state.proseSourceHash!==proseInputHash()||state.proseGeneratedMode!==state.proseMode}).proseStale}
 function setProseProgress(done,total,hint){const percent=total?Math.round(done/total*100):0;el.proseProgressBar.style.width=`${percent}%`;el.proseProgressValue.textContent=`${percent}%`;el.proseProgressTitle.textContent=done?`已整理 ${done}/${total} 段`:"正在准备论述稿…";el.proseProgressHint.textContent=hint||(done<total?"正在保留全部信息并重组书面表达":"论述稿整理完成")}
-function renderProse(){const hasText=!!state.proseText,stale=proseIsStale(),tokens=estimateTokens(state.workingText+el.background.value+effectiveGlossary(state.workingText)),price=PRICE[textModel()]||PRICE["deepseek-flash"],cost=proseActualCost();el.proseMode.value=state.proseMode;el.proseMode.disabled=state.proseRunning;el.proseText.readOnly=state.proseRunning;el.proseEmpty.hidden=hasText;el.proseResult.hidden=!hasText;if(hasText&&document.activeElement!==el.proseText)el.proseText.value=state.proseText;el.copyProse.disabled=!hasText;el.exportProse.disabled=!hasText;el.proseCostEstimate.textContent=!state.workingText?"等待校订稿":state.proseMode==="academic"?"包含结构规划、改写与原文核对；按实际模型用量计费":textProvider()==="deepseek"?`预计新增约 ¥${formatCny(tokens*(price.input+price.output)/1e6)}，实际以返回 token 为准`:"费用以 OpenAI 账单为准";el.proseUsage.textContent=hasText?`${state.proseUsage.total_tokens.toLocaleString()} tokens${cost===null?" · 费用以服务商账单为准":` · 约 ¥${formatCny(cost)}`}${state.proseUserEdited?" · 已人工编辑":""}`:"";el.proseStateBadge.textContent=state.proseRunning?"整理中":stale?"需更新":state.proseStatus==="completed"?"已生成":state.proseStatus==="failed"?"失败":state.proseStatus==="paused"?"已暂停":"未生成";el.proseButton.textContent=state.proseRunning?"整理中…":state.proseStatus==="failed"||state.proseStatus==="paused"?"继续整理":hasText?"重新生成":"生成整理稿";el.proseButton.disabled=workspaceChanging||state.proseRunning||state.running||!state.workingText||state.status!=="completed";el.proseButton.title=state.status!=="completed"?"请先完成当前原文的校订":"";if(!state.running)el.polishButton.disabled=state.proseRunning||workspaceChanging;el.proseCancel.hidden=!state.proseRunning;el.proseProgress.hidden=!(state.proseRunning||state.proseStatus==="failed"||state.proseStatus==="paused");refreshProsePreview();renderResultValidity();syncWorkspaceControls()}
+function renderProse(){
+  const hasText=Boolean(state.proseText.trim()),stale=proseIsStale(),tokens=estimateTokens(state.workingText+el.background.value+effectiveGlossary(state.workingText)),price=PRICE[textModel()]||PRICE["deepseek-flash"],cost=proseActualCost();
+  el.proseMode.value=state.proseMode;el.proseMode.disabled=state.proseRunning;el.proseText.readOnly=state.proseRunning;
+  const showDocument=hasText||state.proseUserEdited;el.proseEmpty.hidden=showDocument;el.proseResult.hidden=!showDocument;
+  if(hasText&&document.activeElement!==el.proseText)el.proseText.value=state.proseText;
+  el.proseCostEstimate.textContent=!state.workingText?"等待校订稿":state.proseMode==="academic"?"包含结构规划、改写与原文核对；按实际模型用量计费":textProvider()==="deepseek"?`预计新增约 ¥${formatCny(tokens*(price.input+price.output)/1e6)}，实际以返回 token 为准`:"费用以 OpenAI 账单为准";
+  el.proseUsage.textContent=hasText?`${state.proseUsage.total_tokens.toLocaleString()} tokens${cost===null?" · 费用以服务商账单为准":` · 约 ¥${formatCny(cost)}`}${state.proseUserEdited?" · 已人工编辑":""}`:"";
+  el.proseStateBadge.textContent=state.proseRunning?"整理中":!hasText&&state.proseUserEdited?"文稿为空":stale?"需更新":state.proseStatus==="completed"?"已生成":state.proseStatus==="failed"?"失败":state.proseStatus==="paused"?"已暂停":"未生成";
+  el.proseButton.textContent=processingActionLabel({kind:"prose",running:state.proseRunning,status:state.proseStatus,sourceMatches:state.proseSourceHash===proseInputHash()&&state.proseGeneratedMode===state.proseMode,hasText});
+  el.proseCancel.hidden=!state.proseRunning;el.proseProgress.hidden=!(state.proseRunning||state.proseStatus==="failed"||state.proseStatus==="paused");
+  refreshProsePreview();renderResultValidity();syncWorkspaceControls();
+}
 function joinedProse(){return state.proseMode==="academic"&&state.proseLecturePlan?assembleLecture(state.proseLecturePlan.plan,state.proseChunks,state.proseLecturePlan.items):state.proseChunks.join("\n\n")}
 async function consumeProse(response){
   await readNdjson(response,event=>{
@@ -166,13 +220,20 @@ async function runProse(){
   finally{state.proseRunning=false;state.proseAbortController=null;renderProse();queueSave()}
 }
 async function exportProseResult(format){
-  if(!state.proseText)return toast("还没有可导出的论述稿","error");
+  if(exportingProse)return false;
+  if(!state.proseText.trim())return toast("还没有可导出的整理稿","error");
   if(proseIsStale()&&!confirm("这份整理稿基于旧原文或旧设置，不是当前资料的最新结果。仍要导出旧稿吗？"))return;
-  const label=state.proseGeneratedMode==="academic"?"讲座整理稿":"论述稿",baseName=`${taskTitle()}-${label}`;
-  if(format==="txt")download(prosePlainText(state.proseText),"txt","text/plain;charset=utf-8",baseName);
-  else if(format==="md")download(proseMarkdown(state.proseText,`${taskTitle()}－${label}`),"md","text/markdown;charset=utf-8",baseName);
-  else if(format==="docx"){const response=await fetch("/api/export/docx",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:`${taskTitle()}－${label}`,text:state.proseText,format:"markdown"})});if(!response.ok)return toast((await response.json()).error||"Word 导出失败","error");download(await response.blob(),"docx","application/vnd.openxmlformats-officedocument.wordprocessingml.document",baseName)}
-  $("#proseExportMenu").hidden=true;
+  const owner=state.taskId,title=state.projectTitle?.trim()||taskTitle(),text=state.proseText,label=state.proseGeneratedMode==="academic"?"讲座整理稿":"论述稿",baseName=`${title}-${label}`;
+  exportingProse=true;syncDocumentActionControls();$("#proseExportMenu").hidden=true;
+  setDocumentActionStatus("prose",`正在准备导出：${baseName}`,"busy",owner);
+  try{
+    if(format==="txt")download(prosePlainText(text),"txt","text/plain;charset=utf-8",baseName);
+    else if(format==="md")download(proseMarkdown(text,`${title}－${label}`),"md","text/markdown;charset=utf-8",baseName);
+    else if(format==="docx")download(await fetchWordDocument({title:`${title}－${label}`,text,markdown:true},fetch),"docx","application/vnd.openxmlformats-officedocument.wordprocessingml.document",baseName);
+    else throw Error("不支持的导出格式");
+    setDocumentActionStatus("prose",`已按导出时的内容发起下载：${baseName}。如有保存窗口，请完成保存。`,"success",owner);return true;
+  }catch(error){setDocumentActionStatus("prose",`导出未完成：${error.message}。整理稿仍保留，可以重试。`,"error",owner);toast(`整理稿导出未完成：${error.message}`,"error");return false}
+  finally{exportingProse=false;syncDocumentActionControls()}
 }
 
 async function consume(response){
@@ -183,12 +244,51 @@ async function consume(response){
   });
 }
 async function consistency(){state.failedStage="consistency";setProgress(state.totalChunks,state.totalChunks,"分段校订完成，正在统一全文术语与人名");const r=await fetch("/api/consistency",{method:"POST",headers:{"Content-Type":"application/json"},signal:state.abortController.signal,body:JSON.stringify({textProvider:textProvider(),background:el.background.value,glossary:effectiveGlossary(state.correctedChunks.join("\n\n")),text:state.correctedChunks.join("\n\n")})}),p=await r.json().catch(()=>({}));if(!r.ok){addUsage(p.usage);if(state.workingText)renderResults();throw Error(p.error||"全文一致性检查失败")}state.workingText=p.corrected_text;state.modelDraft=p.corrected_text;state.changes.push(...(p.changes||[]));const seen=new Set(state.uncertainties.map(x=>`${x.original}|${x.context}`));for(const item of(p.uncertainties||[])){const key=`${item.original}|${item.context}`;if(!seen.has(key)){state.uncertainties.push({...item,_global:true});seen.add(key)}}addUsage(p.usage);state.consistencyDone=true;state.failedStage=null;reanchor();normalizeUncertainties()}
-async function run(){if(state.running)return;if(!el.sourceText.value.trim())return toast("请先粘贴转写稿","error");const currentSourceHash=reviewInputHash(),inputChanged=Boolean(state.reviewSourceHash&&state.reviewSourceHash!==currentSourceHash&&state.workingText);if(inputChanged&&!confirm("原稿、语境、术语或校订设置已经变化，旧断点不能安全沿用。是否重新开始校订？"))return;let resume=!inputChanged&&state.status!=="completed"&&state.status!=="stale"&&(completed().length>0||state.failedIndex!==null||state.failedStage||state.status==="paused");if(!resume)resetResults();state.reviewSourceHash=currentSourceHash;state.abortController=new AbortController();state.status="running";setRunning(true);setProgress(completed().length,state.totalChunks||1);try{if(state.failedStage!=="consistency"){const r=await fetch("/api/correct",{method:"POST",headers:{"Content-Type":"application/json"},signal:state.abortController.signal,body:JSON.stringify({textProvider:textProvider(),background:el.background.value,glossary:effectiveGlossary(),mode:mode(),text:el.sourceText.value,completedIndices:completed()})});await consume(r)}if(!state.consistencyDone)await consistency();state.status="completed";state.failedIndex=null;state.failedStage=null;renderResults();toast("校订与全文一致性检查已完成")}catch(error){if(error.name==="AbortError"){state.status="paused";el.progressTitle.textContent="校订已暂停";el.progressHint.textContent="已完成内容和进度均已保存，可点击继续校订";toast("已暂停，可稍后继续")}else{state.status="failed";el.progressTitle.textContent="校订未完成";el.progressHint.textContent=error.message||"校订失败，已保留完成部分";toast(error.message||"校订失败，已保留完成部分","error")}}finally{state.abortController=null;setRunning(false);queueSave()}}
+async function run(){
+  if(state.running)return;
+  if(!el.sourceText.value.trim())return toast("请先粘贴转写稿","error");
+  const currentSourceHash=reviewInputHash(),inputChanged=Boolean(state.reviewSourceHash&&state.reviewSourceHash!==currentSourceHash&&state.workingText);
+  if(inputChanged&&!confirm("原稿、语境、术语或校订设置已经变化，旧断点不能安全沿用。是否重新开始校订？"))return;
+  const resume=state.reviewSourceHash===currentSourceHash&&!inputChanged&&state.status!=="completed"&&state.status!=="stale"&&(completed().length>0||state.failedIndex!==null||state.failedStage||state.status==="paused");
+  if(!resume)resetResults();
+  state.reviewSourceHash=currentSourceHash;state.abortController=new AbortController();state.status="running";
+  setRunning(true);workspaceFlow?.show("edit");setProgress(completed().length,state.totalChunks||1);
+  try{
+    if(state.failedStage!=="consistency"){
+      const r=await fetch("/api/correct",{method:"POST",headers:{"Content-Type":"application/json"},signal:state.abortController.signal,body:JSON.stringify({textProvider:textProvider(),background:el.background.value,glossary:effectiveGlossary(),mode:mode(),text:el.sourceText.value,completedIndices:completed()})});
+      await consume(r);
+    }
+    if(!state.consistencyDone)await consistency();
+    state.status="completed";state.failedIndex=null;state.failedStage=null;renderResults();workspaceFlow?.show("review");
+    toast("校订已完成，请核对疑点或进入书面整理");
+  }catch(error){
+    if(error.name==="AbortError"){state.status="paused";el.progressTitle.textContent="校订已暂停";el.progressHint.textContent="已完成内容和进度均已保存，可点击继续校订";toast("已暂停，可稍后继续")}
+    else{state.status="failed";el.progressTitle.textContent="校订未完成";el.progressHint.textContent=error.message||"校订失败，已保留完成部分";toast(error.message||"校订失败，已保留完成部分","error")}
+  }finally{state.abortController=null;setRunning(false);queueSave()}
+}
 
-function switchTab(name){$$('.tab').forEach(t=>t.classList.toggle("active",t.dataset.tab===name));$$('.tab-panel').forEach(p=>p.classList.remove("active"));$(`#${name}Panel`).classList.add("active")}
-function markdown(){const review=state.uncertainties.map((x,i)=>{const d=state.decisions[i],handled=d?(d.choice==="manual-reviewed"?"已在正文处理":d.choice==="flagged"?`保留内容并插入${UNCERTAINTY_MARK}`:`已采用：${d.replacement}`):"尚未核对";return`${i+1}. 原文：${x.original||"—"}\n   建议：${x.suggestion||"待回听"}\n   处理：${handled}\n   原因：${x.reason||"—"}`}).join("\n");return`# ${taskTitle()}\n\n${state.workingText}\n\n## 待确认与处理记录\n\n${review||"无"}\n`}
+function switchTab(name,{fromFlow=false}={}){if(!fromFlow&&workspaceFlow){if(name==="prose")workspaceFlow.show("prose");else if(workspaceFlow.stage!=="review")workspaceFlow.show("review")}$$('.tab').forEach(t=>t.classList.toggle("active",t.dataset.tab===name));$$('.tab-panel').forEach(p=>p.classList.remove("active"));$(`#${name}Panel`).classList.add("active")}
+function markdown(title=state.projectTitle?.trim()||taskTitle()){const review=state.uncertainties.map((x,i)=>{const d=state.decisions[i],handled=d?(d.choice==="manual-reviewed"?"已在正文处理":d.choice==="flagged"?`保留内容并插入${UNCERTAINTY_MARK}`:`已采用：${d.replacement}`):"尚未核对";return`${i+1}. 原文：${x.original||"—"}\n   建议：${x.suggestion||"待回听"}\n   处理：${handled}\n   原因：${x.reason||"—"}`}).join("\n");return`# ${title}\n\n${state.workingText}\n\n## 待确认与处理记录\n\n${review||"无"}\n`}
 function download(content,ext,mime="text/plain;charset=utf-8",baseName=taskTitle()){const blob=content instanceof Blob?content:new Blob([content],{type:mime}),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`${baseName.replace(/[\\/:*?"<>|]/g,"-")}-${new Date().toISOString().slice(0,10)}.${ext}`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-async function exportResult(fmt){if(!state.workingText)return toast("还没有可导出的校订稿","error");if(reviewIsStale()&&!confirm("校订稿基于旧原文或旧设置。仍要导出旧稿吗？"))return;if(fmt==="txt")download(state.workingText,"txt");if(fmt==="md")download(markdown(),"md","text/markdown;charset=utf-8");if(fmt==="srt"&&!/\d{2}:\d{2}:\d{2},\d{3}\s+-->/.test(state.workingText))return toast("当前文本不含 SRT 时间戳","error");if(fmt==="vtt"&&!/(WEBVTT|\d{2}:\d{2}:\d{2}\.\d{3}\s+-->)/.test(state.workingText))return toast("当前文本不含 VTT 时间戳","error");if(fmt==="srt"||fmt==="vtt")download(state.workingText,fmt);if(fmt==="docx"){const r=await fetch("/api/export/docx",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:taskTitle(),text:state.workingText})});if(!r.ok)return toast((await r.json()).error||"Word 导出失败","error");download(await r.blob(),"docx","application/vnd.openxmlformats-officedocument.wordprocessingml.document")}el.exportMenu.hidden=true}
+async function exportResult(fmt){
+  if(exportingReview)return false;
+  if(!state.workingText.trim())return toast("还没有可导出的校订稿","error");
+  if(reviewIsStale()&&!confirm("校订稿基于旧原文或旧设置。仍要导出旧稿吗？"))return;
+  const owner=state.taskId,title=state.projectTitle?.trim()||taskTitle(),text=state.workingText,formatted=markdown(title),baseName=`${title}-校订稿`;
+  exportingReview=true;syncDocumentActionControls();el.exportMenu.hidden=true;setDocumentActionStatus("review",`正在准备导出：${baseName}`,"busy",owner);
+  try{
+    if(fmt==="txt")download(text,"txt","text/plain;charset=utf-8",baseName);
+    else if(fmt==="md")download(formatted,"md","text/markdown;charset=utf-8",baseName);
+    else if(fmt==="srt"||fmt==="vtt"){
+      const timed=fmt==="srt"?/\d{2}:\d{2}:\d{2},\d{3}\s+-->/.test(text):/(WEBVTT|\d{2}:\d{2}:\d{2}\.\d{3}\s+-->)/.test(text);
+      if(!timed)throw Error(`当前校订稿不含 ${fmt.toUpperCase()} 时间戳，请选择其他格式`);
+      download(text,fmt,"text/plain;charset=utf-8",baseName);
+    }else if(fmt==="docx")download(await fetchWordDocument({title,text},fetch),"docx","application/vnd.openxmlformats-officedocument.wordprocessingml.document",baseName);
+    else throw Error("不支持的导出格式");
+    setDocumentActionStatus("review",`已按导出时的内容发起下载：${baseName}。如有保存窗口，请完成保存。`,"success",owner);return true;
+  }catch(error){setDocumentActionStatus("review",`导出未完成：${error.message}。校订稿仍保留，可以重试。`,"error",owner);toast(`校订稿导出未完成：${error.message}`,"error");return false}
+  finally{exportingReview=false;syncDocumentActionControls()}
+}
 
 let selectedAudio=null,activeTranscriptionId=null,transcriptionPoll=null,onlineSettings=null,syncing=false,scrollSyncOffset=0;
 let activeReviewIndex=-1,lastPlayingSegment=-1,activeAudio=null,shortcutCaptureAction="",shortcutConfig={...DEFAULT_SHORTCUTS},shortcutDraft={...DEFAULT_SHORTCUTS};
@@ -257,7 +357,13 @@ async function startTranscription(){
   finally{uploadInProgress=false;syncWorkspaceControls()}
 }
 async function cancelActiveTranscription(){if(!activeTranscriptionId)return;try{const r=await fetch(`/api/transcription/jobs/${activeTranscriptionId}`,{method:"DELETE"}),p=await r.json();if(r.status===404){activeTranscriptionId=null;clearTimeout(transcriptionPoll);el.cancelTranscription.hidden=true;el.transcribeButton.textContent="开始转写";el.transcriptionStage.textContent="原任务已不存在，已停止查询，现有草稿继续保留。";return}if(!r.ok)throw Error(p.error||"取消失败");showTranscriptionJob(p)}catch(error){toast(error.message,"error")}finally{syncWorkspaceControls()}}
-function acceptTranscription(){if(workspaceChanging||workspaceBusy())return;const text=el.transcriptionText.value.trim();if(!text)return toast("原始转写稿为空","error");if(el.sourceText.value.trim()&&!confirm("下方已经有原始稿。是否用当前转写稿替换？现有校订结果不会被自动删除。"))return;state.transcriptionDraft=text;el.sourceText.value=text;updateStats();markReviewInputChanged();toast("已送入原文修订区；旧结果如需更新会持续提示");el.sourceText.scrollIntoView({behavior:"smooth",block:"center"})}
+function acceptTranscription(){
+  if(workspaceChanging||workspaceBusy())return;
+  const text=el.transcriptionText.value.trim();if(!text)return toast("原始转写稿为空","error");
+  if(el.sourceText.value.trim()&&!confirm("已经有原文。是否用当前转写稿替换？现有校订结果不会被自动删除。"))return;
+  state.transcriptionDraft=text;el.sourceText.value=text;updateStats();markReviewInputChanged();
+  workspaceFlow?.show("edit");toast("已采用转写稿，可以检查原文并开始校订");el.sourceText.focus();
+}
 
 function currentVersionStage(){if(state.proseText)return"书面稿";if(state.workingText)return"校订稿";if(el.sourceText.value.trim())return"人工修订稿";if(state.transcriptionDraft)return"原始转写稿";return"任务设置"}
 async function saveManualVersion(){const stage=currentVersionStage(),suggested=`${stage} · ${new Date().toLocaleString()}`,label=await requestName({title:"保存工程版本",description:"保存当前工程的完整工作状态，包括录音关联、转写稿、人工修改、校订进度、书面稿、语境和术语。API Key 不会写入版本。",value:suggested,confirmText:"保存版本"});if(label===null)return;const value=label.trim();if(!value)return toast("版本名称不能为空","error");try{await saveTask()}catch{return toast("当前工程保存失败，未创建版本，请检查运行日志后重试","error")}const snapshot={...taskData(),versionStage:stage,versionLabel:value};const r=await fetch(`/api/tasks/${state.taskId}/versions`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(snapshot)}),p=await r.json();if(!r.ok)return toast(p.error||"版本保存失败","error");toast(`已保存工程版本“${value}”`);if(el.historyDrawer.classList.contains("open"))refreshVersions()}
@@ -271,20 +377,40 @@ async function refreshVersions(){
     if(!r.ok)throw Error(p.error||"版本列表读取失败");
     if(!p.versions?.length){const empty=document.createElement("div");empty.className="nothing";empty.textContent="还没有保存的工程版本。";return list.append(empty)}
     for(const version of p.versions){
-      const item=document.createElement("div"),head=document.createElement("header"),title=document.createElement("strong"),meta=document.createElement("div"),stage=document.createElement("span"),time=document.createElement("span");
+      const item=document.createElement("div"),head=document.createElement("header"),title=document.createElement("strong"),meta=document.createElement("div"),stage=document.createElement("span"),time=document.createElement("span"),restore=document.createElement("button");
       item.className="history-item version-item";title.textContent=version.label||version.stage;
       head.append(title,itemActionMenu([{label:"重命名",run:()=>renameVersion(version)},{label:"删除版本",danger:true,run:()=>deleteVersion(version)}]));
       meta.className="history-meta";stage.textContent=version.stage||"保存版本";time.textContent=`${new Date(version.createdAt).toLocaleString()} · ${Number(version.sourceLength||0).toLocaleString()} 字`;meta.append(stage,time);
-      item.append(head,meta);item.onclick=()=>restoreVersion(version.id);list.append(item);
+      restore.type="button";restore.className="secondary-button version-restore";restore.textContent="恢复此版本";restore.setAttribute("aria-label",`恢复版本：${version.label||version.stage||"未命名版本"}`);restore.onclick=()=>restoreVersion(version.id);
+      item.append(head,meta,restore);list.append(item);
     }
   }catch(error){const empty=document.createElement("div");empty.className="nothing";empty.textContent=error.message||"版本列表读取失败。";list.append(empty)}
 }
-function applyTaskToWorkspace(task,{save=false,message="已恢复任务与校对进度"}={}){state=restoreTaskState(task);activeReviewIndex=-1;activeAudio=null;el.sourceText.value=task.sourceText||"";el.background.value=task.background||"";el.glossary.value=task.glossary||"";updateOnlineTranscriptionProvider(state.transcriptionEngine);if(isAlibabaFileModel(state.transcriptionModel))el.transcriptionModel.value=state.transcriptionModel;$(`input[name=mode][value="${task.mode||"standard"}"]`).checked=true;if(state.workingText){reanchor();normalizeUncertainties()}renderTranscriptionDraft();renderTaskTerminologyGroups();updateStats();if(state.workingText)renderResults();else resetResultView();setRunning(false);if(save)queueSave();openHistory(false);toast(message)}
+function applyTaskToWorkspace(task,{save=false,message="已恢复任务与校对进度"}={}){
+  state=restoreTaskState(task);activeReviewIndex=-1;activeAudio=null;
+  el.sourceText.value=task.sourceText||"";el.background.value=task.background||"";el.glossary.value=task.glossary||"";
+  selectedAudio=null;el.audioInput.value="";el.audioFileName.textContent="选择文件";el.audioFileMeta.textContent="重新转写时请选择文件；已有录音关联继续保留";
+  clearTimeout(transcriptionPoll);el.transcriptionProgress.hidden=true;el.cancelTranscription.hidden=true;el.transcribeButton.textContent="开始转写";
+  updateOnlineTranscriptionProvider(state.transcriptionEngine);
+  if(isAlibabaFileModel(state.transcriptionModel))el.transcriptionModel.value=state.transcriptionModel;
+  $(`input[name=mode][value="${task.mode||"standard"}"]`).checked=true;
+  if(state.workingText){reanchor();normalizeUncertainties()}
+  setTextImportStatus("");setDocumentActionStatus("review","");setDocumentActionStatus("prose","");renderTranscriptionDraft();renderTaskTerminologyGroups();updateStats();
+  if(state.workingText)renderResults();else resetResultView();
+  setRunning(false);
+  if(["paused","failed"].includes(state.status)){setProgress(completed().length,state.totalChunks||1,state.failedStage==="consistency"?"全文一致性检查尚未完成，可点击继续校订。":"已恢复保存的校订进度；原文未变时可继续处理。");el.progressTitle.textContent=state.status==="paused"?"校订已暂停，进度已恢复":"上次校订未完成，进度已恢复"}
+  if(["paused","failed"].includes(state.proseStatus)){setProseProgress(proseCompleted().length,state.proseTotalChunks||1,"已保留上次完成的段落；素材或形式变化时需要重新生成。");el.proseProgressTitle.textContent=state.proseStatus==="paused"?"整理已暂停，进度已恢复":"上次整理未完成，进度已恢复"}
+  if(save)queueSave();openHistory(false);workspaceFlow?.openTask();toast(message);
+}
 async function fetchTaskJson(url,label,expectedId){const response=await fetch(url,{cache:"no-store"}),payload=await response.json().catch(()=>({}));if(!response.ok)throw Error(payload.error||`${label}读取失败`);if(!payload||typeof payload!=="object"||!payload.id||(expectedId&&payload.id!==expectedId))throw Error(`${label}数据不完整或与当前任务不匹配`);return payload}
-async function restoreVersion(versionId){if(!confirm("恢复这个版本？会先自动保存当前工程，并建立一份“恢复前自动备份”，可从工程历史找回。"))return;return workspaceGate.run(async()=>{const r=await fetch(`/api/tasks/${state.taskId}/versions/${versionId}/restore`,{method:"POST"}),p=await r.json();if(!r.ok||p.task?.id!==state.taskId)throw Error(p.error||"恢复失败，当前工作区未切换");applyTaskToWorkspace(p.task,{message:"已恢复历史版本；当前内容已保留为恢复前自动备份"})})}
+async function restoreVersion(versionId){
+  const owner=state.taskId;
+  if(!await requestName({title:"恢复历史版本",description:"将用所选版本恢复当前工程。恢复前会先保存现有内容，并额外建立“恢复前自动备份”，以后仍可找回。",confirmText:"保存当前内容并恢复",requireName:false}))return false;
+  if(state.taskId!==owner)return false;
+  return workspaceGate.run(async()=>{const r=await fetch(`/api/tasks/${owner}/versions/${versionId}/restore`,{method:"POST"}),p=await r.json();if(!r.ok||p.task?.id!==owner)throw Error(p.error||"恢复失败，当前工作区未切换");applyTaskToWorkspace(p.task,{message:"已恢复历史版本；当前内容已保留为恢复前自动备份"})});
+}
 let historyPage=1,historyPages=1,historyTrash=false,historyRequest=0,historySearchTimer;
 function openHistory(open){if(open&&(workspaceBusy()||workspaceChanging))return toast("请先暂停当前处理，再切换或恢复工程。","error");el.historyDrawer.classList.toggle("open",open);el.historyDrawer.setAttribute("aria-hidden",String(!open));el.drawerBackdrop.hidden=!open;if(open){el.historyDrawer.inert=false;dialogFocus.open(el.historyDrawer,el.drawerBackdrop,()=>openHistory(false));refreshHistory();refreshVersions()}else{dialogFocus.close(el.historyDrawer);el.historyDrawer.inert=true}}
-const taskStatusLabel=status=>({draft:"进行中",running:"正在校订",paused:"已暂停",completed:"已完成校订",stale:"内容已修改",failed:"处理失败"}[status]||"进行中");
 async function renameTask(task){const title=await requestName({title:"重命名工程",description:"自定义名称会固定保留，不再被课程语境或转写稿开头自动覆盖。",value:task.title||"",confirmText:"保存名称"});if(title===null)return;const value=title.trim();if(!value)return toast("工程名称不能为空","error");const r=await fetch(`/api/tasks/${task.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:value})}),p=await r.json().catch(()=>({}));if(!r.ok)return toast(p.error||"工程重命名失败","error");if(task.id===state.taskId){state.projectTitle=value;await saveTask().catch(()=>{})}toast(`工程已重命名为“${value}”`);refreshHistory()}
 async function deleteTask(task){if(!confirm(`将工程“${task.title}”移入回收站？工程、全部保存版本与录音都会保留，可从回收站恢复。`))return;return workspaceGate.run(async()=>{const r=await fetch(`/api/tasks/${task.id}`,{method:"DELETE"}),p=await r.json().catch(()=>({}));if(!r.ok)throw Error(p.error||"移入回收站失败");persistedTasks.delete(task.id);if(task.id===state.taskId)resetWorkspace({silent:true});toast("工程已移入回收站；版本和录音已保留");refreshHistory();refreshVersions()})}
 async function restoreDeletedTask(task){return workspaceGate.run(async()=>{const r=await fetch(`/api/tasks/${task.id}/restore-deleted`,{method:"POST"}),p=await r.json().catch(()=>({}));if(!r.ok)throw Error(p.error||"恢复工程失败");toast("工程已恢复，版本和录音关联保持不变");await refreshHistory()})}
@@ -310,7 +436,7 @@ async function refreshHistory(){
     if(current){const badge=document.createElement("b");badge.className="current-project-badge";badge.textContent="当前工程";titleRow.append(badge)}
     if(trash){const restore=document.createElement("button");restore.type="button";restore.className="secondary-button";restore.textContent="恢复工程";restore.onclick=()=>restoreDeletedTask(task);head.append(titleRow,restore)}
     else head.append(titleRow,itemActionMenu([{label:"重命名工程",run:()=>renameTask(task)},{label:"移入回收站",danger:true,run:()=>deleteTask(task)}]));
-    meta.className="history-meta";updated.textContent=`${trash?"移入回收站：":""}${new Date(trash?task.deletedAt:task.updatedAt).toLocaleString()}`;details.textContent=`${taskStatusLabel(task.status)} · ${Number(task.sourceLength||0).toLocaleString()} 字 · ${task.hasAudio?"已关联录音":"无录音"}`;meta.append(updated,details);
+    meta.className="history-meta";updated.textContent=`${trash?"移入回收站：":""}${new Date(trash?task.deletedAt:task.updatedAt).toLocaleString()}`;details.textContent=`${projectProgressLabel(task)} · ${Number(task.sourceLength||0).toLocaleString()} 字 · ${task.hasAudio?"已关联录音":"无录音"}`;meta.append(updated,details);
     item.append(head,meta);el.historyList.append(item);
   }
   }catch(error){if(request!==historyRequest)return;el.historyList.replaceChildren();const d=document.createElement("div"),retry=document.createElement("button");d.className="nothing";d.textContent=error.message||"工程历史读取失败。";retry.type="button";retry.textContent="重试";retry.onclick=refreshHistory;el.historyList.append(d,retry);$("#historyPageStatus").textContent="读取失败"}
@@ -322,10 +448,10 @@ $("#historyPrevious").onclick=()=>{if(historyPage>1){historyPage--;refreshHistor
 $("#historyNext").onclick=()=>{if(historyPage<historyPages){historyPage++;refreshHistory()}};
 async function loadTask(id,{throwOnError=false}={}){const opened=await workspaceGate.run(async()=>{const task=await fetchTaskJson(`/api/tasks/${id}`,"历史任务",id);persistedTasks.add(id);applyTaskToWorkspace(task)});if(!opened&&throwOnError)throw Error("工程未打开，请检查保存状态后重试。");return opened}
 function resetWorkspace({silent=false}={}){state=freshState();activeReviewIndex=-1;activeAudio=null;clearPlaybackHighlight();el.sourceText.value="";el.background.value="";el.glossary.value="";selectedAudio=null;el.audioInput.value="";el.audioFileName.textContent="选择文件";el.audioFileMeta.textContent="支持常见音频与视频格式";el.transcriptionProgress.hidden=true;el.transcribeButton.textContent="开始转写";state.terminologyGroupIds=(terminologyLibrary.groups||[]).filter(group=>group.defaultEnabled).map(group=>group.id);state.terminologySnapshot=createTerminologySnapshot(terminologyLibrary,state.terminologyGroupIds);renderTaskTerminologyGroups();renderTranscriptionDraft();resetResultView();updateOnlineTranscriptionProvider();updateStats();queueSave();if(!silent)toast("已新建空白工程，上一工程已保存")}
-async function newTask(options={}){return workspaceGate.run(()=>resetWorkspace(options))}
+async function newTask(options={}){return workspaceGate.run(()=>{resetWorkspace(options);setTextImportStatus("")})}
 
 $("#saveVersionButton").onclick=saveManualVersion;
-$("#nameDialogForm").onsubmit=e=>{e.preventDefault();const value=$("#nameDialogInput").value.trim();if(!value)return toast("名称不能为空","error");closeNameDialog(value)};
+$("#nameDialogForm").onsubmit=e=>{e.preventDefault();if(!nameDialogNeedsValue)return closeNameDialog(true);const value=$("#nameDialogInput").value.trim();if(!value)return toast("名称不能为空","error");closeNameDialog(value)};
 $("#closeNameDialog").onclick=$("#cancelNameDialog").onclick=$("#nameDialogBackdrop").onclick=()=>closeNameDialog();
 $("#nameDialogInput").onkeydown=e=>{if(e.key==="Escape"){e.preventDefault();closeNameDialog()}};
 $("#settingsAsrProvider").onchange=showProviderFields;$("#settingsTextProvider").onchange=showProviderFields;$$(".clear-provider").forEach(button=>button.onclick=()=>clearProvider(button.dataset.provider));
@@ -355,7 +481,7 @@ el.transcriptionModel.onchange=()=>{state.transcriptionModel=el.transcriptionMod
 el.audioInput.onchange=()=>{selectedAudio=el.audioInput.files[0]||null;el.audioFileName.textContent=selectedAudio?selectedAudio.name:"选择文件";el.audioFileMeta.textContent=selectedAudio?humanSize(selectedAudio.size):"支持常见音频与视频格式";el.transcribeButton.disabled=!(selectedAudio&&providerConfigured(onlineSettings,el.transcriptionEngine.value))};
 el.transcribeButton.onclick=startTranscription;
 el.cancelTranscription.onclick=cancelActiveTranscription;
-el.transcriptionText.oninput=()=>{state.transcriptionDraft=el.transcriptionText.value;queueSave()};
+el.transcriptionText.oninput=()=>{state.transcriptionDraft=el.transcriptionText.value;syncDocumentActionControls();queueSave()};
 el.transcriptionAudio.addEventListener("play",()=>{activeAudio=el.transcriptionAudio;el.reviewAudio.pause();syncPlaybackHighlight(el.transcriptionAudio,{follow:true})});
 el.transcriptionAudio.addEventListener("timeupdate",()=>syncPlaybackHighlight(el.transcriptionAudio,{follow:true}));
 el.transcriptionAudio.addEventListener("seeked",()=>syncPlaybackHighlight(el.transcriptionAudio,{follow:true}));
@@ -365,7 +491,7 @@ el.reviewAudio.addEventListener("timeupdate",()=>syncPlaybackHighlight(el.review
 el.reviewAudio.addEventListener("seeked",()=>syncPlaybackHighlight(el.reviewAudio));
 el.reviewAudio.addEventListener("ended",clearPlaybackHighlight);
 el.acceptTranscription.onclick=acceptTranscription;
-el.copyTranscription.onclick=async()=>{await navigator.clipboard.writeText(el.transcriptionText.value);toast("原始转写稿已复制")};
+el.copyTranscription.onclick=()=>copyTextAction(el.transcriptionText.value,"原始转写稿已复制");
 el.sourceText.addEventListener("input",()=>{updateStats();markReviewInputChanged()});
 [el.background,el.glossary].forEach(x=>x.addEventListener("input",()=>{updateStats();markReviewInputChanged()}));
 $$('input[name=mode]').forEach(x=>x.addEventListener("change",markReviewInputChanged));
@@ -374,14 +500,32 @@ el.cancelButton.onclick=()=>state.abortController?.abort();
 el.correctedText.onfocus=()=>state.editSnapshot=snapshot();
 el.correctedText.oninput=()=>{state.workingText=el.correctedText.value;state.userEdited=true;el.editedState.textContent="已包含人工修改";renderProse();queueSave()};
 el.correctedText.onblur=()=>{if(state.editSnapshot?.workingText!==state.workingText){pushUndo(state.editSnapshot);reanchor();queueSave()}state.editSnapshot=null};
-[el.originalText,el.correctedText].forEach(p=>p.addEventListener("scroll",()=>{if(syncing)return;syncing=true;const other=p===el.originalText?el.correctedText:el.originalText,ratio=paneRatio(p),targetRatio=p===el.originalText?ratio-scrollSyncOffset:ratio+scrollSyncOffset;other.scrollTop=Math.max(0,Math.min(other.scrollHeight-other.clientHeight,targetRatio*Math.max(0,other.scrollHeight-other.clientHeight)));requestAnimationFrame(()=>syncing=false)}));
+[el.originalText,el.correctedText].forEach(p=>p.addEventListener("scroll",()=>{if(syncing||reviewView==="edit")return;syncing=true;const other=p===el.originalText?el.correctedText:el.originalText,ratio=paneRatio(p),targetRatio=p===el.originalText?ratio-scrollSyncOffset:ratio+scrollSyncOffset;other.scrollTop=Math.max(0,Math.min(other.scrollHeight-other.clientHeight,targetRatio*Math.max(0,other.scrollHeight-other.clientHeight)));requestAnimationFrame(()=>syncing=false)}));
 $("#clearText").onclick=()=>{if(!workspaceChanging&&!workspaceBusy()&&(!el.sourceText.value||confirm("清空当前原文？已生成的旧稿会保留并标记为需要更新。"))){el.sourceText.value="";updateStats();markReviewInputChanged()}};
 $("#queryAsrAccountStatus").onclick=()=>queryAccountStatus("asr",el.transcriptionEngine.value);
 $("#queryTextAccountStatus").onclick=()=>queryAccountStatus("text",onlineSettings?.textProvider||"deepseek");
 $("#settingsTextAccountStatusButton").onclick=()=>queryAccountStatus("textSettings",$("#settingsTextProvider").value);
-el.fileInput.onchange=async()=>{const f=el.fileInput.files[0];if(!f||workspaceChanging||workspaceBusy())return;if(f.size>2.5*1024*1024)return toast("文件过大，请选择 2.5 MB 以内的文件","error");if(el.sourceText.value&&!confirm("用导入文件替换当前原文？旧校订稿将保留并标记为需要更新。"))return;const owner=state.taskId,text=await f.text();if(owner!==state.taskId||workspaceChanging||workspaceBusy())return;el.sourceText.value=text;updateStats();markReviewInputChanged();el.fileInput.value=""};
+function setTextImportStatus(message,error=false){const notice=$("#textImportStatus");notice.textContent=message;notice.hidden=!message;notice.className=`text-import-status${error?" error":""}`}
+async function importTextFile(file=el.fileInput.files[0]){
+  if(!file||workspaceChanging||workspaceBusy())return false;
+  try{
+    if(file.size>2.5*1024*1024)throw Error("文件过大，请选择 2.5 MB 以内的文字文件。已有原文未改变。");
+    if(el.sourceText.value&&!confirm("用导入文件替换当前原文？旧校订稿将保留并标记为需要更新。"))return false;
+    const owner=state.taskId;textImporting=true;syncWorkspaceControls();setTextImportStatus("正在读取文件，已有原文尚未替换…");
+    const text=await file.text();
+    if(owner!==state.taskId||workspaceChanging)return false;
+    if(!text.trim())throw Error("文件没有可用文字，未替换已有原文。请选择其他文件或直接粘贴文字。");
+    el.sourceText.value=text;updateStats();markReviewInputChanged();setTextImportStatus("文字已导入，可以检查原文并开始校订。");workspaceFlow?.show("edit");return true;
+  }catch(error){const detail=error.message||"请重新选择文件重试。",message=/已有原文|未替换/.test(detail)?detail:`文字文件读取失败，已有原文未改变。${detail}`;setTextImportStatus(message,true);toast(message,"error");return false}
+  finally{textImporting=false;el.fileInput.value="";syncWorkspaceControls()}
+}
+el.fileInput.onchange=()=>importTextFile();
+$("#importTextButton").onclick=()=>el.fileInput.click();
+el.sourceText.addEventListener("input",()=>setTextImportStatus(""));
 $$('.tab').forEach(t=>t.onclick=()=>{switchTab(t.dataset.tab);if(t.dataset.tab==="prose")renderProse()});
-$("#copyResult").onclick=async()=>{await navigator.clipboard.writeText(state.workingText);toast("校订稿已复制")};
+$("#copyResult").onclick=()=>copyTextAction(state.workingText,"校订稿已复制","review");
+$("#reviewCompareButton").onclick=()=>setReviewView("compare");
+$("#reviewEditButton").onclick=()=>setReviewView("edit");
 $("#downloadResult").onclick=()=>el.exportMenu.hidden=!el.exportMenu.hidden;
 $$('[data-export]').forEach(b=>b.onclick=()=>exportResult(b.dataset.export));
 el.undoButton.onclick=undo;
@@ -391,15 +535,17 @@ el.nextReview.onclick=()=>moveReview(1);
 el.proseMode.onchange=()=>{state.proseMode=el.proseMode.value;renderProse();queueSave()};
 el.proseButton.onclick=runProse;
 el.proseCancel.onclick=()=>state.proseAbortController?.abort();
-el.copyProse.onclick=async()=>{if(!state.proseText)return;await navigator.clipboard.writeText(state.proseText);toast("论述稿已复制")};
+el.copyProse.onclick=()=>copyTextAction(state.proseText,"整理稿 Markdown 已复制","prose");
+$("#copyProsePlain").onclick=()=>copyTextAction(prosePlainText(state.proseText),"整理稿纯文字已复制","prose");
 el.exportProse.onclick=()=>$("#proseExportMenu").hidden=!$("#proseExportMenu").hidden;
 $$("[data-prose-export]").forEach(button=>button.onclick=()=>exportProseResult(button.dataset.proseExport));
-el.proseText.oninput=()=>{state.proseText=el.proseText.value;state.proseUserEdited=true;el.proseUsage.textContent=`${state.proseUsage.total_tokens.toLocaleString()} tokens · 约 ¥${formatCny(proseActualCost())} · 已人工编辑`;queueSave()};
+el.proseText.oninput=()=>{state.proseText=el.proseText.value;state.proseUserEdited=true;el.proseUsage.textContent=`${state.proseUsage.total_tokens.toLocaleString()} tokens · 约 ¥${formatCny(proseActualCost())} · 已人工编辑`;syncDocumentActionControls();queueSave()};
 $$('.help').forEach(b=>b.onclick=()=>toast(b.dataset.tip));
 $("#historyButton").onclick=()=>openHistory(true);
 $("#closeHistory").onclick=()=>openHistory(false);
 el.drawerBackdrop.onclick=()=>openHistory(false);
 $("#newTaskButton").onclick=newTask;
+$("#retrySaveButton").onclick=async()=>{clearTimeout(saveTimer);setSaveState("saving");try{await saveTask(true)}catch(error){toast(error.message||"保存失败，请重试","error")}};
 document.addEventListener("keydown",handleShortcutKeydown,true);
 $("#readProseButton").onclick=()=>{proseView="read";refreshProsePreview()};
 $("#editProseButton").onclick=()=>{proseView="edit";refreshProsePreview();el.proseText.focus()};
@@ -415,6 +561,15 @@ globalThis.classmatePrepareExit=()=>{
   saveTask(true).then(()=>{globalThis.classmateExitStatus="ready"}).catch(()=>{globalThis.classmateCancelExit();globalThis.classmateExitStatus="failed"});
 };
 globalThis.classmateCancelExit=()=>{workspaceChanging=false;syncWorkspaceControls();globalThis.classmateExitStatus="idle"};
+workspaceFlow=installWorkspaceFlow({
+  getState:()=>({taskId:state.taskId,projectName:state.projectTitle?.trim()||taskTitle(),source:el.sourceText.value,draft:state.transcriptionDraft,review:state.workingText,prose:state.proseText,proseEdited:state.proseUserEdited,
+    status:state.status,proseStatus:state.proseStatus,pending:pendingReviewIndices().length,reviewStale:reviewIsStale(),proseStale:proseIsStale(),
+    busy:workspaceChanging||workspaceBusy(),running:state.running,proseRunning:state.proseRunning,
+    hasAudio:Boolean(selectedAudio),transcribing:Boolean(activeTranscriptionId||uploadInProgress),importingText:textImporting,asrReady:providerConfigured(onlineSettings,el.transcriptionEngine.value),
+    settingsLoaded:Boolean(onlineSettings),textReady:Boolean(onlineSettings?.saved?.[textProvider()==="openai"?"openaiApiKey":"deepseekApiKey"])}),
+  actions:{tab:name=>switchTab(name,{fromFlow:true}),settings:()=>openApiSettings(true),accept:acceptTranscription}
+});
+globalThis.classmateWorkspaceFlow=workspaceFlow;
 initWindowsUpdates({save:async()=>{clearTimeout(saveTimer);await saveTask(true)},activity:()=>({busy:workspaceBusy()||workspaceChanging,dirty:taskRevision>savedRevision||(!el.apiSettingsDialog.hidden&&settingsBaseline!==null&&settingsBaseline!==settingsFingerprint())})});
 updateStats();
 const startupQuery=String(globalThis.location?.search||"");

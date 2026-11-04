@@ -51,6 +51,18 @@ static class WindowsDpiProbe
                 if (!AreDpiAwarenessContextsEqual(GetWindowDpiAwarenessContext(window), new IntPtr(-4))) throw new Exception("Production window is not PerMonitorV2 aware.");
                 if (form.AutoScaleMode != AutoScaleMode.Dpi) throw new Exception("Production form is not using DPI autoscaling.");
 
+                MethodInfo setFrame = type.GetMethod("SetCustomFrame", BindingFlags.Instance | BindingFlags.NonPublic);
+                int captionBefore = form.PointToScreen(Point.Empty).Y - form.Top;
+                setFrame.Invoke(form, new object[] { true });
+                int captionAfter = form.PointToScreen(Point.Empty).Y - form.Top;
+                if (captionAfter >= captionBefore || captionAfter > 20 * form.DeviceDpi / 96F) throw new Exception("Native caption was not removed.");
+                if (form.Region == null || form.Region.IsVisible(0, 0) || !form.Region.IsVisible(form.Width / 2, form.Height / 2)) throw new Exception("Rounded window region is invalid.");
+                form.Width += 80;
+                if (!form.Region.IsVisible(form.Width / 2, form.Height / 2)) throw new Exception("Window region did not follow resize.");
+                setFrame.Invoke(form, new object[] { false });
+                if (form.Region != null || form.PointToScreen(Point.Empty).Y - form.Top != captionBefore) throw new Exception("System caption fallback failed.");
+                Console.WriteLine("CustomCaptionRemoved=True; RoundedRegionFollowsResize=True; SystemCaptionFallback=True");
+
                 MethodInfo constrain = type.GetMethod("ConstrainToWorkingArea", BindingFlags.Static | BindingFlags.NonPublic);
                 foreach (float scale in new float[] { 1F, 1.25F, 1.5F, 2F })
                 {

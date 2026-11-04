@@ -1,0 +1,142 @@
+/* Task views share existing editors and handlers: switching views never copies data. */
+.workspace-flow { --flow-footer: 100px; background: #faf6ee; }
+.workspace-flow::before, .workspace-flow .ambient { display: none; }
+.workspace-flow .project-context { display: none; }
+.workspace-flow .workspace { padding-bottom: var(--flow-footer); align-items: start; align-content: start; }
+.workspace-stage-nav { display: flex; gap: 8px; grid-column: 1 / -1; }
+.workspace-stage-button { display: grid; grid-template-columns: 28px 1fr; align-items: center; column-gap: 9px; row-gap: 3px; flex: 1; padding: 12px; text-align: left; border: 1px solid #cbb69c; border-radius: 10px; background: #fffaf1; color: #493a2f; }
+.stage-number { grid-row: 1 / 3; width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid #c1a383; border-radius: 8px; font-weight: 700; font-size: 13px; }
+.stage-label { font-size: 14px; font-weight: 650; }
+.stage-state { color: #75624f; font-size: 12px; }
+.workspace-stage-button:hover { border-color: #8b5837; background: #f4e7d5; }
+.workspace-stage-button[aria-current] { background: #e9d6b9; border-color: #8b5837; box-shadow: inset 3px 0 #8b5837; }
+.workspace-stage-button[aria-current] .stage-number { background: #795035; color: #fff; border-color: #795035; }
+.flow-heading { grid-column: 1 / -1; padding: 4px 100px 8px 0; position: relative; }
+.flow-project-name { font-size: 13px; color: #624b36; margin-bottom: 8px; }
+.flow-heading #focusModeButton { position: absolute; top: 5px; right: 0; }
+.windows-desktop .flow-project-name { display: none; }
+.flow-heading h1 { font-size: 25px; line-height: 1.4; margin: 6px 0; color: #493a2f; }
+.flow-heading h1:focus { outline: none; }
+.flow-heading p { margin: 0; color: #6f5b48; font-size: 14px; line-height: 1.7; }
+.flow-eyebrow { font-size: 12px; color: #7a614a; }
+.flow-activity { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border: 1px solid #b88c49; background: #fff0d2; border-radius: 10px; font-size: 14px; gap: 12px; }
+.source-choices { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+.source-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; min-height: 172px; padding: 22px; background: #fffdf8; border: 1.5px solid #bda181; border-radius: 16px; color: #493a2f; text-decoration: none; text-align: left; white-space: normal; }
+.source-choice strong { font-size: 17px; }
+.source-choice small { color: #6f5b48; font-size: 13px; line-height: 1.7; }
+.source-choice .source-icon { background: #f0e1ce; border-radius: 10px; width: 38px; height: 38px; display: grid; place-items: center; color: #75492d; font-size: 18px; }
+.source-choice:hover, .source-choice[aria-pressed="true"] { border-color: #795035; background: #fbf1e2; box-shadow: 0 5px 16px #63452314; }
+.flow-empty { grid-column: 1 / -1; min-height: 270px; padding: 46px 24px; text-align: center; border: 1px dashed #b69b7b; border-radius: 16px; background: #fffdf8; }
+.flow-empty strong { font-size: 19px; color: #493a2f; }
+.flow-empty p { margin-block: 16px 24px; font-size: 14px; color: #6f5b48; line-height: 1.8; }
+.workspace-flow .flow-footer { position: fixed; left: 0; right: 0; bottom: 0; z-index: 12; display: flex; align-items: center; gap: 12px; min-height: 84px; padding: 14px 24px; border-top: 1px solid #c5ac8e; background: #fffaf2; box-shadow: 0 -5px 20px #654a2d0b; }
+.flow-footer-copy { flex: 1; min-width: 100px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+.flow-action-hint { color: #624b36; font-size: 13px; line-height: 1.65; }
+.text-import-status { margin: 14px 0 0; padding: 10px 12px; border: 1px solid #baa282; border-radius: 9px; font-size: 13px; line-height: 1.7; background: #f4eddf; color: #624b36; }
+.text-import-status.error { border-color: #a1352b; background: #fff0e9; color: #8b3028; }
+.workspace-flow .file-button:has(input:disabled) { cursor: wait; opacity: .65; }
+.history-drawer { overflow-y: auto; overscroll-behavior: contain; }
+.version-item { cursor: default; }
+.version-item .version-restore { width: 100%; margin-top: 12px; font-size: 13px; min-height: 38px; }
+.flow-footer .flow-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin: 0; }
+.flow-footer .editor-cost { display: flex; flex-direction: column; font-size: 12px; color: #6f5b48; }
+.flow-footer .editor-cost small { display: none; }
+.flow-footer .run-actions { display: flex; gap: 10px; }
+.flow-footer .flow-version-fallback { display: none; }
+.workspace-flow button.primary-button { background: #795035; border: 1px solid #795035; color: white; font-weight: 650; min-height: 42px; box-shadow: 0 3px 8px #65452318; }
+.workspace-flow button.primary-button:hover:enabled { background: #603e27; border-color: #603e27; }
+.workspace-flow .secondary-button { border: 1px solid #af8d6a; background: #fffaf1; color: #65442d; min-height: 40px; }
+.workspace-flow .text-button { color: #694326; text-decoration: underline; text-underline-offset: 3px; }
+.workspace-flow button:disabled { cursor: not-allowed; opacity: 1; color: #776e64; background: #eee8df; border-color: #d2c8b9; box-shadow: none; }
+.workspace-flow .source-editor { min-height: min(46vh,460px); }
+.workspace-flow .editor-card > .editor-head .step, .workspace-flow .transcription-card .step { display: none; }
+.workspace-flow .editor-mode-heading small, .workspace-flow .section-title p { color: #6f5b48; }
+.workspace-flow .result-card { min-height: 0; }
+.workspace-flow .result-card.empty { display: none; }
+.workspace-flow .result-actions { flex-wrap: wrap; }
+.workspace-flow #copyResult::after { content: "校订稿"; }
+.workspace-flow #downloadResult::before { content: "校订稿 "; }
+.workspace-flow #exportProse::before { content: "整理稿 "; }
+.document-action-status { padding: 10px 12px; margin: 12px 0; border: 1px solid #bca484; border-radius: 9px; background: #f5eddf; color: #624b36; line-height: 1.65; font-size: 13px; }
+.document-action-status[data-state="error"] { border-color: #ad5142; background: #fff0e9; color: #8b3028; }
+.document-action-status[data-state="success"] { border-color: #96ac93; background: #f0f4e9; color: #426347; }
+.workspace-flow .review-core-grid .compare-grid { height: clamp(320px,52vh,650px); min-height: 0; }
+.workspace-flow .review-core-grid { min-height: 0; }
+.workspace-flow .review-issues-column .review-list { max-height: clamp(300px,55vh,700px); }
+.review-edit-only .review-core-grid .compare-grid { grid-template-columns: minmax(0,1fr); }
+.review-edit-only .compare-grid > section:first-child { display: none; }
+.review-view-controls { margin-top: 0; }
+.workspace-flow .document-view-controls button[aria-pressed="true"] { background: #795035; border-color: #795035; color: #fff; font-weight: 650; }
+.workspace-flow #correctedText { scroll-margin-top: calc(var(--desktop-header,0px) + 20px); scroll-margin-bottom: calc(var(--flow-footer) + 20px); }
+.document-empty { color: #75624f; padding: 20px 0; }
+.workspace-flow .prose-toolbar { flex-wrap: wrap; }
+.workspace-flow .prose-mode { font-size: 14px; }
+.workspace-flow .prose-mode select { font-size: 14px; border-color: #b69b7b; }
+.workspace-flow .prose-intro small { font-size: 13px; color: #6f5b48; }
+.workspace-flow .context-settings .section-title { display: none; }
+.workspace-flow .context-settings { margin-bottom: 14px; }
+.workspace-flow:not([data-workspace-stage="intake"]) .source-choices,
+.workspace-flow:not([data-workspace-stage="intake"]) #transcriptionWorkspace,
+.workspace-flow:not([data-workspace-stage="intake"]) #recordingRecoveryNotice,
+.workspace-flow:not([data-workspace-stage="edit"]) #editorWorkspace,
+.workspace-flow:not([data-workspace-stage="edit"]) #contextSettings,
+.workspace-flow[data-workspace-stage="intake"] #resultCard,
+.workspace-flow[data-workspace-stage="edit"] #resultCard,
+.workspace-flow[data-workspace-stage="prose"] .result-head,
+.workspace-flow[data-workspace-stage="prose"] .secondary-tabs,
+.workspace-flow[data-workspace-stage="review"] [data-tab="prose"],
+.workspace-flow[data-source-mode="choose"] #transcriptionWorkspace { display: none; }
+.save-indicator { display: flex; align-items: center; gap: 8px; }
+#saveStatus[data-state] { white-space: nowrap; font-size: 12px; }
+#saveStatus[data-state="empty"] { color: #75624f; }
+#saveStatus[data-state="saving"] { color: #7b5719; }
+#saveStatus[data-state="saved"] { color: #366344; }
+#saveStatus[data-state="failed"] { color: #a1352b; font-weight: 700; }
+.save-retry { border: 1px solid #a1352b; color: #a1352b; background: #fff5f1; border-radius: 7px; padding: 5px 8px; font-size: 12px; }
+.windows-desktop .desktop-sidebar .workspace-stage-nav { display: flex; flex-direction: column; gap: 9px; }
+.windows-desktop .desktop-sidebar .workspace-stage-button { flex: none; padding: 11px 9px; min-height: 66px; }
+.windows-desktop .desktop-sidebar .header-button { border: 1px solid #c5ac8e; background: #fffaf1; }
+.windows-desktop .desktop-sidebar #newTaskButton { background: #795035; color: white; border-color: #795035; }
+.windows-desktop .desktop-sidebar .header-button svg { display: inline-block; width: 15px; height: 15px; }
+.windows-desktop .desktop-sidebar-utilities button { min-height: 38px; margin-top: 6px; }
+.windows-desktop.workspace-flow .flow-footer { left: var(--desktop-sidebar); }
+.windows-desktop.workspace-flow .workspace { min-height: calc(100vh - var(--desktop-header) - 60px); }
+.windows-desktop .desktop-caption #saveStatus { color: revert; }
+.windows-desktop .desktop-caption #saveStatus[data-state="empty"] { color: #75624f; }
+.windows-desktop .desktop-caption #saveStatus[data-state="saving"] { color: #7b5719; }
+.windows-desktop .desktop-caption #saveStatus[data-state="saved"] { color: #366344; }
+.windows-desktop .desktop-caption #saveStatus[data-state="failed"] { color: #a1352b; }
+.windows-desktop.workspace-flow.focus-mode { --desktop-sidebar: 0px; }
+.windows-desktop.workspace-flow.focus-mode .desktop-sidebar { display: none; }
+.workspace-flow.focus-mode .flow-eyebrow, .workspace-flow.focus-mode .flow-heading p, .workspace-flow.focus-mode .workspace-stage-nav { display: none; }
+.focus-exit { display: none; }
+.workspace-flow.focus-mode .focus-exit { display: block; position: fixed; right: 24px; top: 65px; z-index: 14; padding: 8px 12px; border: 1px solid #a78460; border-radius: 8px; background: #fffaf1; color: #65442d; }
+.live-status-summary { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.live-status-summary span { padding: 6px 10px; border: 1px solid #c5ac8e; border-radius: 8px; background: #fffaf1; font-size: 12px; color: #624b36; }
+.live-recognition-notice { border: 1px solid #b17a35; background: #fff0d2; color: #694419; padding: 12px; border-radius: 9px; line-height: 1.7; font-size: 14px; }
+.desktop-caption #liveHeaderStatus.live-status-error { color: #a1352b; }
+.desktop-caption #liveHeaderStatus.live-status-idle { color: #75624f; }
+.desktop-caption #liveHeaderStatus { max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.live-page .live-result-actions { position: sticky; bottom: 0; padding: 14px 10px; border-top: 1px solid #c5ac8e; background: #fffaf1; z-index: 6; }
+@media(max-width:1100px) {
+  .flow-footer .flow-actions { gap: 8px; }
+  .flow-footer { flex-wrap: wrap; }
+  .flow-footer-copy { flex-basis: 100%; }
+  .workspace-flow { --flow-footer: 150px; }
+  .source-choices { gap: 10px; }
+  .source-choice { padding: 16px; }
+  .desktop-caption .save-indicator { max-width: 180px; }
+  .desktop-caption #saveStatus { overflow: hidden; text-overflow: ellipsis; }
+}
+@media(max-width:760px) {
+  .flow-footer .flow-version-fallback { display: block; }
+  .workspace-stage-nav { display: grid; grid-template-columns: 1fr 1fr; }
+  .source-choices { grid-template-columns: 1fr; }
+  .source-choice { min-height: 130px; gap: 8px; }
+  .workspace-flow .flow-footer { padding: 12px; gap: 8px; }
+  .flow-footer .flow-actions { flex-wrap: wrap; }
+  .windows-desktop .desktop-sidebar .workspace-stage-button { grid-template-columns: 20px 1fr; column-gap: 6px; padding-inline: 5px; }
+  .windows-desktop .desktop-sidebar .stage-number { width: 20px; height: 24px; }
+  .stage-label { font-size: 13px; }
+  .stage-state { font-size: 11px; }
+}

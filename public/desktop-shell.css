@@ -1,0 +1,46 @@
+/* Opt-in host shell; ordinary browsers and macOS keep their existing chrome. */
+.desktop-caption, .desktop-sidebar { display: none; }
+.windows-desktop { --desktop-header: 54px; --desktop-sidebar: 174px; padding-top: var(--desktop-header); background: #faf6ee; }
+.windows-desktop::before, .windows-desktop .ambient { display: none; }
+.windows-desktop .desktop-caption { position: fixed; inset: 0 0 auto; height: var(--desktop-header); z-index: 15; display: flex; align-items: center; gap: 12px; padding-left: 16px; padding-right: 141px; background: #faf6ee; border-bottom: 1px solid #e4d8c6; user-select: none; app-region: drag; -webkit-app-region: drag; }
+.desktop-caption .brand { gap: 8px; }
+.desktop-caption .brand-mark { width: 28px; height: 28px; }
+.desktop-caption .brand strong { font-size: 13px; }
+.desktop-caption .brand small { display: none; }
+.desktop-caption .brand { pointer-events: none; }
+.desktop-caption .desktop-project { min-width: 50px; flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #493a2f; }
+.desktop-caption #saveStatus, .desktop-caption #liveHeaderStatus { font-size: 12px; color: #4e705b; white-space: nowrap; }
+.desktop-caption button, .desktop-caption a, .desktop-caption .desktop-window-controls { app-region: no-drag; -webkit-app-region: no-drag; }
+.desktop-caption .header-button { min-height: 32px; padding: 6px 9px; font-size: 12px; }
+.desktop-window-controls { display: none; }
+.windows-desktop .desktop-window-controls { display: flex; position: fixed; top: 0; right: 0; height: var(--desktop-header); z-index: 100; background: #faf6ee; border-bottom: 1px solid #e4d8c6; app-region: no-drag; -webkit-app-region: no-drag; }
+.desktop-window-button { width: 43px; border: 0; background: transparent; color: #493a2f; font: 20px "Segoe UI", sans-serif; border-radius: 0; box-shadow: none; }
+.desktop-window-button:hover { background: #eae0d1; }
+.desktop-close:hover { color: #a34236; background: #f7e4df; }
+.desktop-window-button:focus-visible { outline: 2px solid #956b42; outline-offset: -4px; }
+.desktop-caption .brand { app-region: drag; -webkit-app-region: drag; }
+.windows-desktop .desktop-sidebar { display: flex; flex-direction: column; position: fixed; top: var(--desktop-header); bottom: 0; left: 0; width: var(--desktop-sidebar); padding: 22px 12px 16px; gap: 8px; z-index: 5; background: #f2eadd; border-right: 1px solid #e4d8c6; overflow-y: auto; }
+.desktop-sidebar .header-button, .desktop-sidebar .text-button, .desktop-sidebar .desktop-stage-link { display: block; width: 100%; margin: 0; text-align: left; min-height: 36px; padding: 9px 10px; font-size: 13px; color: #493a2f; border: 0; border-radius: 8px; background: transparent; box-shadow: none; text-decoration: none; }
+.desktop-sidebar .header-button svg { display: none; }
+.desktop-sidebar button:hover, .desktop-sidebar a:hover, .desktop-stage-link[aria-current] { background: #eadac4; }
+.desktop-nav-label { padding: 16px 10px 2px; color: #7a6b5c; font-size: 11px; }
+.desktop-sidebar-utilities { margin-top: auto; padding-top: 16px; border-top: 1px solid #e4d8c6; }
+.windows-desktop .project-context { display: none; }
+.windows-desktop .workspace, .windows-desktop.focus-mode .workspace { width: calc(100% - var(--desktop-sidebar) - 48px); max-width: 1500px; margin: 24px 24px 40px calc(var(--desktop-sidebar) + 24px); }
+.windows-desktop .live-shell { width: calc(100% - var(--desktop-sidebar) - 48px); margin: 24px 24px 40px calc(var(--desktop-sidebar) + 24px); }
+.windows-desktop .live-record-actions { top: calc(var(--desktop-header) + 10px); }
+.windows-desktop .transcription-card, .windows-desktop .editor-card, .windows-desktop .result-card { background: #fffdf8; }
+.windows-desktop .drawer-backdrop { top: var(--desktop-header); }
+.windows-desktop .history-drawer { top: var(--desktop-header); height: calc(100vh - var(--desktop-header)); }
+.windows-desktop .settings-dialog { max-height: calc(100vh - var(--desktop-header) - 32px); top: calc(50% + var(--desktop-header) / 2); }
+@media(max-width:1100px) { .windows-desktop { --desktop-sidebar: 148px; } .desktop-caption .brand strong { display: none; } .desktop-caption #saveVersionButton { padding-inline: 6px; } .windows-desktop .review-core-grid { grid-template-columns: minmax(0,1fr); } .windows-desktop .live-shell { grid-template-columns: minmax(0,1fr); } }
+@media(max-width:760px) {
+  .windows-desktop { --desktop-sidebar: 118px; }
+  .windows-desktop .desktop-sidebar { padding-inline: 5px; }
+  .desktop-sidebar .header-button, .desktop-sidebar .text-button, .desktop-sidebar .desktop-stage-link { padding-inline: 7px; font-size: 12px; }
+  .windows-desktop .desktop-caption { gap: 6px; padding-right: 108px; }
+  .desktop-caption #saveStatus { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+  .desktop-caption #saveVersionButton { display: none; }
+  .desktop-window-button { width: 34px; }
+  .windows-desktop .workspace, .windows-desktop.focus-mode .workspace, .windows-desktop .live-shell { width: calc(100% - var(--desktop-sidebar) - 24px); margin-inline: calc(var(--desktop-sidebar) + 12px) 12px; }
+}

@@ -123,12 +123,123 @@ namespace ClassmateLilithLauncher
         private bool initializing;
         private bool allowClose;
         private bool closeHintShown;
+        private bool customFrame;
+        private bool customFrameSupported;
+        private bool updatingFrameRegion;
+        private Size frameRegionSize;
+        private int frameRegionDpi;
+        private FormWindowState frameRegionState;
 
         internal event EventHandler RetryRequested;
         internal event EventHandler BrowserRequested;
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FrameRect { internal int Left, Top, Right, Bottom; }
+
+        [DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindowDC(IntPtr hwnd);
+
+        [DllImport("user32.dll")]
+        private static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+
+        // Retain WS_THICKFRAME/WS_SYSMENU and let Windows own resizing, snapping,
+        // Alt+Space and maximize bounds. Remove only the standard caption area.
+        protected override void WndProc(ref Message message)
+        {
+            if (customFrame && message.Msg == 0x0083 && message.WParam != IntPtr.Zero)
+            {
+                var outer = (FrameRect)Marshal.PtrToStructure(message.LParam, typeof(FrameRect));
+                base.WndProc(ref message);
+                var client = (FrameRect)Marshal.PtrToStructure(message.LParam, typeof(FrameRect));
+                int edge = Math.Max(1, client.Left - outer.Left);
+                client.Top = outer.Top + edge;
+                Marshal.StructureToPtr(client, message.LParam, false);
+                message.Result = IntPtr.Zero;
+                return;
+            }
+            base.WndProc(ref message);
+            if (customFrame && (message.Msg == 0x0085 || message.Msg == 0x0086)) PaintFrameBorder();
+        }
+
+        private void PaintFrameBorder()
+        {
+            if (WindowState != FormWindowState.Normal || !IsHandleCreated) return;
+            IntPtr dc = GetWindowDC(Handle);
+            if (dc == IntPtr.Zero) return;
+            try
+            {
+                Point client = PointToScreen(Point.Empty);
+                int left = Math.Max(0, client.X - Left), top = Math.Max(0, client.Y - Top);
+                using (var graphics = Graphics.FromHdc(dc))
+                using (var brush = new SolidBrush(Color.FromArgb(250, 246, 238)))
+                {
+                    graphics.FillRectangle(brush, 0, 0, Width, top);
+                    graphics.FillRectangle(brush, 0, top, left, Height - top);
+                    graphics.FillRectangle(brush, left + ClientSize.Width, top, Math.Max(0, Width - left - ClientSize.Width), Height - top);
+                    graphics.FillRectangle(brush, left, top + ClientSize.Height, ClientSize.Width, Math.Max(0, Height - top - ClientSize.Height));
+                }
+            }
+            finally { ReleaseDC(Handle, dc); }
+        }
+
+        private void UpdateFrameRegion()
+        {
+            if (!customFrame || updatingFrameRegion || IsDisposed || !IsHandleCreated) return;
+            if (frameRegionSize == Size && frameRegionDpi == DeviceDpi && frameRegionState == WindowState) return;
+            frameRegionSize = Size; frameRegionDpi = DeviceDpi; frameRegionState = WindowState;
+            updatingFrameRegion = true;
+            try
+            {
+                Region previous = Region;
+                if (WindowState == FormWindowState.Maximized) Region = null;
+                else if (WindowState != FormWindowState.Minimized && Width > 0 && Height > 0)
+                {
+                    int diameter = Math.Min(Math.Min(Width, Height), (int)Math.Round(44 * DeviceDpi / 96F));
+                    using (var outline = new System.Drawing.Drawing2D.GraphicsPath())
+                    {
+                        outline.AddArc(0, 0, diameter, diameter, 180, 90);
+                        outline.AddArc(Width - diameter, 0, diameter, diameter, 270, 90);
+                        outline.AddArc(Width - diameter, Height - diameter, diameter, diameter, 0, 90);
+                        outline.AddArc(0, Height - diameter, diameter, diameter, 90, 90);
+                        outline.CloseFigure(); Region = new Region(outline);
+                    }
+                }
+                if (previous != null && previous != Region) previous.Dispose();
+            }
+            finally { updatingFrameRegion = false; }
+        }
+
+        private void SetCustomFrame(bool enabled)
+        {
+            if (customFrame == enabled) return;
+            customFrame = enabled;
+            frameRegionSize = Size.Empty;
+            if (!enabled)
+            {
+                Region previous = Region;
+                Region = null;
+                if (previous != null) previous.Dispose();
+            }
+            SetWindowPos(Handle, IntPtr.Zero, 0, 0, 0, 0, 0x0020 | 0x0001 | 0x0002 | 0x0004 | 0x0010);
+            UpdateFrameRegion();
+        }
+
+        private void PublishWindowState()
+        {
+            if (webView == null || webView.CoreWebView2 == null) return;
+            try { webView.CoreWebView2.PostWebMessageAsString(WindowState == FormWindowState.Maximized ? "window:maximized" : "window:normal"); } catch { }
+        }
+
+        protected override void OnResize(EventArgs args)
+        {
+            base.OnResize(args); UpdateFrameRegion(); PublishWindowState();
+        }
 
         internal WorkspaceForm(string root)
         {
@@ -263,7 +374,7 @@ namespace ClassmateLilithLauncher
             base.OnDpiChanged(e);
             // Let WinForms and the WebView2 wrapper complete their normal DPI
             // resize first; do not emulate DPI with page zoom or CSS transforms.
-            if (IsHandleCreated) BeginInvoke(new MethodInvoker(delegate { if (!IsDisposed) FitToWorkingArea(false); }));
+            if (IsHandleCreated) BeginInvoke(new MethodInvoker(delegate { if (!IsDisposed) { FitToWorkingArea(false); UpdateFrameRegion(); } }));
         }
 
         private static Icon LoadAppIcon(string root)
@@ -309,6 +420,7 @@ namespace ClassmateLilithLauncher
 
         internal void ShowStarting(string detail)
         {
+            SetCustomFrame(false);
             statusTitle.Text = "正在启动 Classmate Lilith";
             statusDetail.Text = detail;
             statusProgress.Visible = true;
@@ -321,6 +433,7 @@ namespace ClassmateLilithLauncher
 
         internal void ShowFailure(string message, bool browserFallback)
         {
+            SetCustomFrame(false);
             statusTitle.Text = "无法打开工作台";
             statusDetail.Text = message;
             statusProgress.Visible = false;
@@ -346,7 +459,7 @@ namespace ClassmateLilithLauncher
                     options.AdditionalBrowserArguments = "--disable-background-timer-throttling --proxy-bypass-list=127.0.0.1;localhost";
                     var environment = await CoreWebView2Environment.CreateAsync(null, userData, options);
                     await webView.EnsureCoreWebView2Async(environment);
-                    ConfigureWebView();
+                    await ConfigureWebView();
                     initializing = false;
                 }
                 webView.CoreWebView2.Navigate(Program.Url);
@@ -364,8 +477,31 @@ namespace ClassmateLilithLauncher
             }
         }
 
-        private void ConfigureWebView()
+        private async System.Threading.Tasks.Task ConfigureWebView()
         {
+            try
+            {
+                webView.CoreWebView2.Settings.IsNonClientRegionSupportEnabled = true;
+                customFrameSupported = true;
+            }
+            catch { customFrameSupported = false; }
+            await webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                "window.classmateDesktop=Object.freeze({platform:'windows',frameless:" + (customFrameSupported ? "true" : "false") + "});");
+            webView.CoreWebView2.WebMessageReceived += delegate(object sender, CoreWebView2WebMessageReceivedEventArgs args)
+            {
+                Uri source;
+                if (!customFrameSupported || !Uri.TryCreate(args.Source, UriKind.Absolute, out source) ||
+                    source.Scheme != "http" || source.Host != "127.0.0.1" || source.Port != 4178) return;
+                string command;
+                try { command = args.TryGetWebMessageAsString(); } catch { return; }
+                // Remove the system caption only once the page has installed its controls.
+                if (command == "window:ready") { SetCustomFrame(true); PublishWindowState(); return; }
+                if (!customFrame) return;
+                if (command == "window:minimize") WindowState = FormWindowState.Minimized;
+                else if (command == "window:toggle-maximize") WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
+                else if (command == "window:close") Close(); // Existing close-to-tray protection remains authoritative.
+                else if (command == "window:state") PublishWindowState();
+            };
             webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
             webView.CoreWebView2.Settings.IsZoomControlEnabled = true;
@@ -376,6 +512,7 @@ namespace ClassmateLilithLauncher
                 {
                     statusPanel.Visible = false;
                     webView.Visible = true;
+                    PublishWindowState();
                     ShowWorkspace();
                 }
                 else ShowFailure("工作台载入失败。请重新尝试，或使用浏览器临时打开。", true);

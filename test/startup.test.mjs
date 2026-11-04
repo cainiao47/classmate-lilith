@@ -10,6 +10,8 @@ import { assembleLecture, proseMarkdown, prosePlainText } from "../public/module
 import { createSaveQueue } from "../public/modules/save-queue.js";
 import { readNdjson } from "../public/modules/ndjson-stream.js";
 import { createWorkspaceGate, resultValidity } from "../public/modules/workspace-lifecycle.js";
+import { processingActionLabel } from "../public/modules/workspace-flow.js";
+import { copyDocumentText, fetchWordDocument } from "../public/modules/document-actions.js";
 
 test("page initialization binds history and all export buttons and loads online settings", async () => {
   const source = (await fs.readFile(new URL("../public/app.js", import.meta.url), "utf8")).replace(/^import .*;\r?\n/gm, "");
@@ -27,6 +29,7 @@ test("page initialization binds history and all export buttons and loads online 
     ONLINE_TRANSCRIPTION_PROVIDERS, configuredProviderCount, preferredOnlineProvider, providerConfigured,
     combineGlossary: () => "", createSaveQueue, readNdjson, createWorkspaceGate, resultValidity,
     createDialogFocus:()=>({open(){},close(){}}),renderDocumentPreview(){},
+    installWorkspaceFlow:()=>null,processingActionLabel,copyDocumentText,fetchWordDocument,
     setTimeout: () => 1, clearTimeout() {},
     document: {
       querySelector(selector) {
@@ -44,6 +47,7 @@ test("page initialization binds history and all export buttons and loads online 
   vm.runInContext(source, context);
   assert.equal(typeof elements.get("#historyButton").onclick, "function");
   assert.equal(typeof elements.get("#newTaskButton").onclick, "function");
+  assert.equal(typeof elements.get("#importTextButton").onclick, "function");
   assert.ok(exports.every(button => typeof button.onclick === "function"));
   assert.ok(requests.includes("/api/settings"));
   assert.ok(!requests.includes("/api/transcription/capabilities"));
@@ -109,4 +113,56 @@ test("page initialization binds history and all export buttons and loads online 
   context.fetch=async()=>{throw Error("temporary")};
   await vm.runInContext('activeTranscriptionId="job-retry";pollTranscription()',context);
   assert.equal(vm.runInContext('activeTranscriptionId',context),"job-retry");
+
+  // A file read owns the workspace until it either commits the text or fails.
+  context.confirm=()=>true;
+  vm.runInContext('activeTranscriptionId=null;state.running=false;state.proseRunning=false;workspaceChanging=false;el.sourceText.value="保留原文"',context);
+  let finishRead;
+  context.importFile={size:10,text:()=>new Promise(resolve=>finishRead=resolve)};
+  const reading=vm.runInContext('importTextFile(importFile)',context);
+  assert.equal(vm.runInContext('workspaceBusy()',context),true);
+  assert.equal(await vm.runInContext('newTask()',context),false);
+  assert.equal(elements.get("#sourceText").value,"保留原文");
+  finishRead("新导入文字");assert.equal(await reading,true);
+  assert.equal(elements.get("#sourceText").value,"新导入文字");
+  assert.equal(vm.runInContext('workspaceBusy()',context),false);
+  context.importFile={size:10,text:async()=>{throw Error("模拟读取失败")}};
+  assert.equal(await vm.runInContext('importTextFile(importFile)',context),false);
+  // Export completion must keep the requested document's name and content even
+  // when a different project is opened before the Word response arrives.
+  context.confirm=()=>true;context.downloads=[];context.wordRequests=[];
+  vm.runInContext('download=(...args)=>downloads.push(args);state.projectTitle="导出时的工程";state.workingText="导出时的内容";state.status="completed";state.reviewSourceHash=reviewInputHash()',context);
+  let finishWord;
+  context.fetch=(url,options)=>{context.wordRequests.push({url,body:JSON.parse(options.body)});return new Promise(resolve=>finishWord=resolve)};
+  const exporting=vm.runInContext('exportResult("docx")',context);
+  assert.equal(vm.runInContext('exportingReview',context),true);
+  assert.equal(await vm.runInContext('exportResult("docx")',context),false);
+  vm.runInContext('state.taskId="task-other-export";state.projectTitle="另一个工程";state.workingText="后来的修改"',context);
+  finishWord({ok:true,blob:async()=>new Blob(["synthetic docx"])});assert.equal(await exporting,true);
+  assert.equal(context.wordRequests.length,1);assert.equal(context.wordRequests[0].body.text,"导出时的内容");
+  assert.equal(context.downloads[0][3],"导出时的工程-校订稿");
+  context.fetch=async()=>{throw Error("offline")};
+  assert.equal(await vm.runInContext('exportResult("docx")',context),false);
+  assert.equal(elements.get("#reviewDocumentStatus").dataset.state,"error");
+  assert.equal(elements.get("#downloadResult").disabled,false);
+  assert.equal(vm.runInContext('state.workingText',context),"后来的修改");
+  context.navigator={clipboard:{writeText:async()=>{throw Error("denied")}}};
+  assert.equal(await vm.runInContext('copyTextAction("示例","已复制","prose")',context),false);
+  assert.equal(elements.get("#proseDocumentStatus").dataset.state,"error");
+  context.copied=[];context.navigator.clipboard.writeText=async text=>context.copied.push(text);
+  vm.runInContext('state.proseText="## **标题**\\n正文"',context);
+  await elements.get("#copyProse").onclick();await elements.get("#copyProsePlain").onclick();
+  assert.deepEqual(context.copied,["## **标题**\n正文","标题\n正文"]);
+  elements.get("#proseText").value="";elements.get("#proseText").oninput();
+  assert.equal(elements.get("#copyProse").disabled,true);assert.equal(elements.get("#exportProse").disabled,true);
+  vm.runInContext('renderProse()',context);assert.equal(elements.get("#proseResult").hidden,false,"empty manual editing must retain its editing surface");
+  assert.equal(elements.get("#sourceText").value,"新导入文字");
+  assert.match(elements.get("#textImportStatus").textContent,/已有原文未改变/);
+  assert.equal(elements.get("#sourceText").readOnly,false);
+  context.importFile={size:0,text:async()=>""};
+  assert.equal(await vm.runInContext('importTextFile(importFile)',context),false);
+  assert.equal(elements.get("#sourceText").value,"新导入文字");
+  context.confirm=()=>false;
+  context.importFile={size:10,text:()=>assert.fail("cancelled replacement must not read the file")};
+  assert.equal(await vm.runInContext('importTextFile(importFile)',context),false);
 });

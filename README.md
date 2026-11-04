@@ -13,7 +13,7 @@
   <a href="https://github.com/cainiao47/classmate-lilith/releases/latest">下载最新版</a>
 </p>
 
-Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线录音转写 → 人工修订 → AI 校订 → 人工复核 → 书面化整理。它不内置本地语音模型，Windows 和 macOS 使用相同的网页界面、在线服务适配层与任务格式。
+Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线录音转写 → 人工修订 → AI 校订 → 人工复核 → 书面化整理。它不内置本地语音模型，源码共用网页工作台、在线服务适配层与任务格式；Windows 和 macOS 的已发布版本进度不同。
 
 ## 下载
 
@@ -21,13 +21,13 @@ Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线
 
 | 系统 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows 10/11 x64 安装版 | [v0.23.1 安装包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.23.1/Classmate-Lilith-Setup-0.23.1.exe) | 安装向导、旧版数据导入、应用内检查与安装更新 |
-| Windows 10/11 x64 便携版 | [v0.23.1 便携包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.23.1/Classmate-Lilith-Windows-x64.zip) | 解压后双击 `Classmate Lilith.exe`，无需安装 |
+| Windows 10/11 x64 安装版 | [v0.24.0 安装包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.24.0/Classmate-Lilith-Setup-0.24.0.exe) | 安装向导、旧版数据导入、应用内检查与安装更新 |
+| Windows 10/11 x64 便携版 | [v0.24.0 便携包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.24.0/Classmate-Lilith-Windows-x64.zip) | 解压后双击 `Classmate Lilith.exe`，无需安装 |
 | macOS 13+ Apple Silicon | [v0.21.1 下载页](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.21.1) | 本轮保留 GitHub 现有版本，首次启动需手动放行 |
 
 Windows 安装与覆盖升级详见 [Windows 安装说明](docs/WINDOWS_INSTALL.md)。安装版将用户数据独立保存，升级保留数据；卸载时显示数据路径，可手动选择保留或经二次确认后删除。首次安装可以从旧便携版复制并校验数据。
 
-当前 Windows 正式版为 **[v0.23.1](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.23.1)**（2026-10-22），包含全部交互与阅读改进、录音分段恢复、工程搜索分页和回收站，并提供 EXE 安装器、便携包与签名更新清单。此前 v0.23.0 仅为本地测试包，内容不完整，请使用本版。macOS 下载仍为 **v0.21.1**，本轮不重新构建。详见 [发布说明](docs/RELEASE_0.23.1.md) 与 [版本核对记录](docs/VERSION_AUDIT.md)。
+当前 Windows 正式版为 **[v0.24.0](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.24.0)**（2026-11-04），新增一体化顶栏、轻量侧栏和四阶段工作区，完善中断恢复、长文复核、阅读预览及复制导出反馈，并提供 EXE 安装器、便携包与签名更新清单。macOS 下载仍为 **v0.21.1**，本轮不重新构建。详见 [发布说明](docs/RELEASE_0.24.0.md) 与 [版本核对记录](docs/VERSION_AUDIT.md)。
 
 macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次运行时请按 [macOS 安装说明](docs/MACOS_INSTALL.md) 操作。Intel Mac 暂未提供预编译包。
 
@@ -44,7 +44,16 @@ Windows 版使用 WebView2独立应用窗口；Windows 11 已包含对应运行�
 - 全局术语库、任务历史、运行日志与 TXT/Markdown/Word/SRT 导出。
 - API Key 只存放在本机，不提交到仓库。
 
-## Windows 当前版本：0.23.1
+## Windows 当前版本：0.24.0
+
+- 一体化顶栏、轻量侧栏和 22px 窗口圆角；保留拖动、缩放、最小化、最大化及关闭至托盘，运行时不支持时回退系统标题栏。
+- 素材导入、原文校订、人工复核、书面整理四阶段视图，配合底部操作栏、空态和前置条件提示；切换阶段不会自动启动处理。
+- 中断工程恢复至可继续的阶段，明确区分继续处理与重新处理；文字导入和历史版本恢复提供明确入口、错误反馈及恢复前备份。
+- 长文复核支持原文对照或单栏编辑，定位原文自动返回对照；整理稿完善加粗和目录预览，清空后保留编辑入口。
+- 分开复制 Markdown 与纯文字；复制/导出提供持续反馈，导出固定当前标题与正文，阻止重复提交并处理超时与重试。
+- 实时页区分录音、识别与工程保存状态，收尾确认超时后提示核对，仍等待本机音频写入结束。
+
+### 0.23.1（历史版本）
 
 - 第一批交互修订：切换前保存、处理中切换保护、恢复前自动备份及版本关联录音保留。
 - 分离保存状态与结果有效性，修复成稿空态占位；增加整理稿阅读预览、目录、字号和专注模式。
