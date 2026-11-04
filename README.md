@@ -21,13 +21,13 @@ Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线
 
 | 系统 | 文件 | 说明 |
 | --- | --- | --- |
-| Windows 10/11 x64 安装版 | [v0.24.0 安装包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.24.0/Classmate-Lilith-Setup-0.24.0.exe) | 安装向导、旧版数据导入、应用内检查与安装更新 |
-| Windows 10/11 x64 便携版 | [v0.24.0 便携包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.24.0/Classmate-Lilith-Windows-x64.zip) | 解压后双击 `Classmate Lilith.exe`，无需安装 |
-| macOS 13+ Apple Silicon | [v0.24.0 Mac 包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.24.0/Classmate-Lilith-macOS-arm64.zip) | 独立应用窗口；本轮按要求仅构建发布，未运行测试 |
+| Windows 10/11 x64 安装版 | [v0.3.0 安装包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.3.0/Classmate-Lilith-Setup-0.3.0.exe) | 安装向导、旧版数据导入、应用内检查与安装更新 |
+| Windows 10/11 x64 便携版 | [v0.3.0 便携包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.3.0/Classmate-Lilith-Windows-x64.zip) | 解压后双击 `Classmate Lilith.exe`，无需安装 |
+| macOS 13+ Apple Silicon | [v0.3.0 DMG 安装盘](https://github.com/cainiao47/classmate-lilith/releases/download/v0.3.0/Classmate-Lilith-macOS-arm64.dmg) | 拖入“应用程序”；提供签名更新组件，本轮未做 Mac 交互测试 |
 
 Windows 安装与覆盖升级详见 [Windows 安装说明](docs/WINDOWS_INSTALL.md)。安装版将用户数据独立保存，升级保留数据；卸载时显示数据路径，可手动选择保留或经二次确认后删除。首次安装可以从旧便携版复制并校验数据。
 
-当前版本为 **[v0.24.0](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.24.0)**（2026-11-04）。Windows 新增一体化顶栏、轻量侧栏，并提供 EXE 安装器、便携包与签名更新清单。macOS Apple Silicon 包也已从同一版本源码重新构建，保留 Mac 原生窗口，包含四阶段工作区、中断恢复、长文复核、阅读预览及复制导出改进；本轮按用户要求仅构建发布，未执行测试或真机交互验证。详见 [发布说明](docs/RELEASE_0.24.0.md) 与 [版本核对记录](docs/VERSION_AUDIT.md)。
+当前版本为 **[v0.3.0](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.3.0)**（2026-11-04），包含复核栏宽拖动、Mac 退出前保存保护、DMG/应用内更新，以及跨平台维护修复。此编号按新的命名取代原 v0.25.0 开发编号，内容更新于 v0.24.0。**旧 0.24.x 客户端此次需要手动下载安装 0.3.0，旧版检查更新无法识别这个数值更小的新编号。** 详见 [发布说明](docs/RELEASE_0.3.0.md) 与 [维护记录](docs/MAINTENANCE_0.25.0.md)。
 
 macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次运行时请按 [macOS 安装说明](docs/MACOS_INSTALL.md) 操作。Intel Mac 暂未提供预编译包。
 
@@ -44,9 +44,9 @@ Windows 版使用 WebView2独立应用窗口；Windows 11 已包含对应运行�
 - 全局术语库、任务历史、运行日志与 TXT/Markdown/Word/SRT 导出。
 - API Key 只存放在本机，不提交到仓库。
 
-## Windows 当前版本：0.24.0
+## Windows 当前版本：0.3.0
 
-开发进度：**Windows 开发版本：0.25.0（未发布）**，正在推进可拖动的复核分栏、Mac 退出前保存保护及 DMG/应用内更新，见 [开发记录](docs/NEXT_DEVELOPMENT.md)。上方下载链接仍指向已发布的 v0.24.0。
+本版包含复核分栏宽度拖动、Mac 退出保护及 Sparkle 更新组件。升级前完全退出旧客户端，数据独立保留；Mac 首次需要手动安装本版，此后才可应用内更新。
 
 - 一体化顶栏、轻量侧栏和 22px 窗口圆角；保留拖动、缩放、最小化、最大化及关闭至托盘，运行时不支持时回退系统标题栏。
 - 素材导入、原文校订、人工复核、书面整理四阶段视图，配合底部操作栏、空态和前置条件提示；切换阶段不会自动启动处理。
