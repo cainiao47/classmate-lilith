@@ -1,6 +1,6 @@
 Classmate Lilith
-Version: 0.30.0
-Release channel: Windows and macOS Apple Silicon
+Version: 0.30.1
+Release channel: macOS startup repair preview; public Windows release remains 0.30.0
 Mode: Online transcription only
 
 Transcription providers:

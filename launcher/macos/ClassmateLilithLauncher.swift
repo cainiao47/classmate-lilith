@@ -27,6 +27,23 @@ extension AppDelegate: SPUUpdaterDelegate {
 
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+    @MainActor
+    static func main() {
+        autoreleasepool {
+            let application = NSApplication.shared
+            let delegate = AppDelegate()
+            delegate.traceStartup("bootstrap.enter")
+            application.setActivationPolicy(.regular)
+            application.delegate = delegate
+            delegate.traceStartup("bootstrap.delegate-bound")
+            // NSApplication's delegate is not a lifetime owner. This app has no
+            // main nib/storyboard, so create and retain it explicitly.
+            withExtendedLifetime(delegate) {
+                _ = NSApplicationMain(CommandLine.argc, CommandLine.unsafeArgv)
+            }
+        }
+    }
+
     private let workspaceURL = URL(string: "http://127.0.0.1:4178")!
     private lazy var launchToken = loadOrCreateLaunchToken()
     private var mainWindow: NSWindow!
@@ -48,18 +65,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var terminationReplyPending = false
     private var updateRelaunchApproved = false
     private var pendingUpdateInstall: (() -> Void)?
+    private var startupScheduled = false
 #if canImport(Sparkle)
     private var updaterController: SPUStandardUpdaterController?
 #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        traceStartup("lifecycle.did-finish-launching")
         NSApp.setActivationPolicy(.regular)
         configureApplicationMenu()
         configureMainWindow()
         configureStatusMenu()
-        configureUpdater()
         showMainWindow()
-        beginStartup()
+        // Return to AppKit once so the status window can draw before WebKit
+        // and the backend are initialized.
+        if !startupScheduled {
+            startupScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.isQuitting else { return }
+                self.configureWebView()
+                self.beginStartup()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -136,6 +163,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     private func configureUpdater() {
 #if canImport(Sparkle)
+        if ProcessInfo.processInfo.environment["CLASSMATE_STARTUP_DIAGNOSTIC"] == "1" { traceStartup("updater.skipped-for-diagnostic"); return }
+        guard updaterController == nil else { return }
+        traceStartup("updater.initialize")
         let controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
         updaterController = controller
         let item = NSMenuItem(title: "检查更新…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
@@ -145,8 +175,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        traceStartup("lifecycle.reopen")
         showMainWindow()
-        if !flag { openWorkspace() }
+        if !flag && webView != nil { openWorkspace() }
         return true
     }
 
@@ -156,12 +187,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private var dataDirectory: URL {
+        if let configured = ProcessInfo.processInfo.environment["CLASSMATE_DATA_DIR"], configured.hasPrefix("/") { return URL(fileURLWithPath: configured, isDirectory: true) }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent("Classmate Lilith", isDirectory: true)
             .appendingPathComponent("data", isDirectory: true)
     }
 
     private var logsDirectory: URL {
+        if let configured = ProcessInfo.processInfo.environment["CLASSMATE_LOG_DIR"], configured.hasPrefix("/") { return URL(fileURLWithPath: configured, isDirectory: true) }
         let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent("Logs", isDirectory: true)
             .appendingPathComponent("Classmate Lilith", isDirectory: true)
@@ -211,6 +244,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func configureMainWindow() {
+        guard mainWindow == nil else { return }
+        traceStartup("window.create")
         let frame = NSRect(x: 0, y: 0, width: 1280, height: 820)
         mainWindow = NSWindow(
             contentRect: frame,
@@ -232,15 +267,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let root = NSView(frame: frame)
         root.autoresizingMask = [.width, .height]
         mainWindow.contentView = root
-
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .default()
-        webView = WKWebView(frame: root.bounds, configuration: configuration)
-        webView.autoresizingMask = [.width, .height]
-        webView.navigationDelegate = self
-        webView.uiDelegate = self
-        webView.isHidden = true
-        root.addSubview(webView)
 
         let visual = NSVisualEffectView(frame: root.bounds)
         visual.autoresizingMask = [.width, .height]
@@ -325,12 +351,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func showMainWindow() {
+        configureMainWindow()
+        if mainWindow.isMiniaturized { mainWindow.deminiaturize(nil) }
         mainWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        traceStartup("window.visible=\(mainWindow.isVisible)")
+    }
+
+    private func configureWebView() {
+        guard webView == nil, let root = mainWindow?.contentView else { return }
+        traceStartup("webview.initialize")
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
+        webView = WKWebView(frame: root.bounds, configuration: configuration)
+        webView.autoresizingMask = [.width, .height]
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.isHidden = true
+        root.addSubview(webView, positioned: .below, relativeTo: statusContainer)
+        traceStartup("webview.initialized")
+    }
+
+    private func traceStartup(_ message: String) {
+        let line = "\(Date().timeIntervalSince1970) [launcher:\(ProcessInfo.processInfo.processIdentifier)] \(message)\n"
+        do {
+            if launcherLogHandle == nil {
+                try FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
+                let file = logsDirectory.appendingPathComponent("launcher.log")
+                if !FileManager.default.fileExists(atPath: file.path) { FileManager.default.createFile(atPath: file.path, contents: nil) }
+                launcherLogHandle = try FileHandle(forWritingTo: file)
+            }
+            try launcherLogHandle?.seekToEnd()
+            try launcherLogHandle?.write(contentsOf: Data(line.utf8))
+        } catch { FileHandle.standardError.write(Data((line + "日志写入失败：\(error.localizedDescription)\n").utf8)) }
     }
 
     private func showStarting(_ detail: String) {
-        webView.isHidden = true
+        webView?.isHidden = true
         statusContainer.isHidden = false
         statusSpinner.isHidden = false
         statusSpinner.startAnimation(nil)
@@ -341,13 +398,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     private func showFailure(_ message: String) {
+        traceStartup("startup.failure: \(message)")
         startupTimer?.invalidate()
         statusSpinner.stopAnimation(nil)
         statusSpinner.isHidden = true
         statusTitle.stringValue = "无法打开工作台"
         statusDetail.stringValue = message
         retryButton.isHidden = false
-        webView.isHidden = true
+        webView?.isHidden = true
         statusContainer.isHidden = false
         showMainWindow()
         NSApp.requestUserAttention(.criticalRequest)
@@ -358,6 +416,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         statusContainer.isHidden = true
         webView.isHidden = false
         showMainWindow()
+        traceStartup("workspace.visible")
+        configureUpdater()
     }
 
     private func beginStartup() {
@@ -365,6 +425,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         checkServiceHealth { [weak self] healthy in
             guard let self else { return }
             if healthy {
+                self.traceStartup("backend.reused")
                 self.loadWorkspace()
             } else if self.startServer() {
                 self.waitForServer()
@@ -414,6 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             }
             try process.run()
             serverProcess = process
+            traceStartup("backend.started pid=\(process.processIdentifier)")
             showStarting("本地服务正在启动……")
             return true
         } catch {

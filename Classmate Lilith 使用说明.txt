@@ -1,4 +1,4 @@
-Classmate Lilith 0.30.0（Windows / macOS）
+Classmate Lilith 0.30.1（Mac 启动修复预览）
 
 版本提示：本版为 v0.30.0，包含原 v0.25.0 开发线的全部功能和维护修复。Windows 可检查更新或下载本版安装器覆盖升级，数据保留；Mac 旧客户端首次需完全退出后手动替换为本版，之后可以应用内更新。Windows 安装版数据保存在系统“文档”，Mac 数据仍在用户 Library 目录。
 v0.22.2 修复 Windows 高清缩放下的文字模糊，支持按显示器缩放并自动适应窗口尺寸。需要 .NET Framework 4.7.2 或更新版本；不要单独移动或删除 Classmate Lilith.exe.config。无需将 Windows 系统缩放改成 100%。

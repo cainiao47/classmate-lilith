@@ -16,12 +16,14 @@
   <string>6.0</string>
   <key>CFBundleName</key>
   <string>Classmate Lilith</string>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.30.0</string>
+  <string>0.30.1</string>
   <key>CFBundleVersion</key>
-  <string>0.30.0</string>
+  <string>0.30.1</string>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.productivity</string>
   <key>LSMinimumSystemVersion</key>

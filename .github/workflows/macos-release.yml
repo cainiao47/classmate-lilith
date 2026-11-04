@@ -15,6 +15,10 @@ on:
         description: Publish assets and signed update feed (requires signing secret)
         type: boolean
         default: false
+      startup_check:
+        description: Run isolated native startup and force-quit/relaunch diagnostic
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -49,6 +53,8 @@ jobs:
           node -e 'const v=require("./package.json").version;if(process.env.TAG!=="v"+v)throw Error("Release tag and source version differ")'
       - name: Download pinned Sparkle framework
         run: bash distribution/prepare-sparkle.sh "$RUNNER_TEMP/sparkle"
+      - name: Compile native lifecycle upfront
+        run: swiftc -parse-as-library -typecheck launcher/macos/ClassmateLilithLauncher.swift -F "$RUNNER_TEMP/sparkle" -framework AppKit -framework Foundation -framework WebKit -framework Sparkle
       - name: Build static Apple Silicon FFmpeg with LAME
         shell: bash
         run: |
@@ -112,6 +118,9 @@ jobs:
         run: |
           test -n "$WINDOWS_UPDATE_PRIVATE_KEY" || { echo 'Release signing secret is missing'; exit 1; }
           node distribution/sign-macos-update.mjs dist
+      - name: Verify native startup and force-quit relaunch
+        if: inputs.startup_check
+        run: python3 distribution/test-macos-startup.py 'dist/Classmate Lilith.app'
       - uses: actions/upload-artifact@v4
         with:
           name: macos-release
