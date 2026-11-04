@@ -1,5 +1,7 @@
 # macOS v0.30.0 无窗口启动评估
 
+后续已按此评估实施 Mac 0.30.1 启动修复预览，详见 [修复与验证记录](MACOS_STARTUP_FIX_0.30.1.md)。以下保留修复前的评估过程。
+
 评估对象：已发布的 `Classmate-Lilith-macOS-arm64.zip` 内实际二进制、Info.plist，以及对应 Swift 启动器和构建流程。用户环境为 M5 / macOS 27；用户补充：第一次打开时 Dock 有图标但无窗口，强制关闭后再次打开不再出现 Dock 图标。本机为 Windows，没有在该 Mac 上复现；本次不修改应用、不重新发布。
 
 ## 结论
