@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-  <channel>
-    <title>Classmate Lilith macOS Updates</title>
-    <description>Signed Apple Silicon updates. Items are added only after release assets are uploaded.</description>
-  </channel>
+  <channel><title>Classmate Lilith macOS Updates</title><item>
+    <title>Classmate Lilith 0.30.0</title>
+    <sparkle:version>0.30.0</sparkle:version>
+    <sparkle:shortVersionString>0.30.0</sparkle:shortVersionString>
+    <sparkle:minimumSystemVersion>13.0.0</sparkle:minimumSystemVersion>
+    <description>更新会保留用户目录中的设置、工程和录音。请先完成并保存工作。</description>
+    <enclosure url="https://github.com/cainiao47/classmate-lilith/releases/download/v0.30.0/Classmate-Lilith-macOS-arm64.zip" sparkle:os="macos" sparkle:edSignature="kcz1zuV0YdBRT35uHzx/Iqk4kgQdDlrNktMU5bfih3npegqR43QW9RJhXS1QsyWz6g3B8aJ1aqBQwIF3gjHWAA==" length="53727010" type="application/octet-stream" />
+  </item></channel>
 </rss>
