@@ -27,6 +27,16 @@ extension AppDelegate: SPUUpdaterDelegate {
 
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+    @MainActor
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = AppDelegate()
+        application.delegate = delegate
+        withExtendedLifetime(delegate) {
+            application.run()
+        }
+    }
+
     private let workspaceURL = URL(string: "http://127.0.0.1:4178")!
     private lazy var launchToken = loadOrCreateLaunchToken()
     private var mainWindow: NSWindow!
