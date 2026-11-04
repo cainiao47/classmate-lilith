@@ -1,0 +1,112 @@
+name: macOS build and publish (without tests)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and append macOS assets
+        required: true
+        default: v0.24.0
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 22.23.3
+  FFMPEG_VERSION: 9.0.2
+  FFMPEG_COMMIT: 946fcce07b6dcd0331c8cc609192aeff5e1924f8
+  LAME_VERSION: "3.100"
+
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Confirm package version matches release tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          node -e 'const v=require("./package.json").version;if(process.env.TAG!=="v"+v)throw Error("Release tag and source version differ")'
+      - name: Build static Apple Silicon FFmpeg with LAME
+        shell: bash
+        run: |
+          set -euo pipefail
+          download="$RUNNER_TEMP/classmate-downloads"
+          prefix="$RUNNER_TEMP/classmate-runtime"
+          mkdir -p "$download" "$prefix"
+
+          node_archive="node-v${NODE_VERSION}-darwin-arm64.tar.xz"
+          node_base="https://nodejs.org/dist/v${NODE_VERSION}"
+          curl --fail --location --retry 3 "$node_base/$node_archive" -o "$download/$node_archive"
+          curl --fail --location --retry 3 "$node_base/SHASUMS256.txt" -o "$download/node-SHASUMS256.txt"
+          (cd "$download" && grep "  $node_archive$" node-SHASUMS256.txt | shasum -a 256 -c -)
+          tar -xJf "$download/$node_archive" -C "$download"
+
+          lame_archive="lame-${LAME_VERSION}.tar.gz"
+          curl --fail --location --retry 3 "https://downloads.sourceforge.net/project/lame/lame/${LAME_VERSION}/$lame_archive" -o "$download/$lame_archive"
+          echo "ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e  $download/$lame_archive" | shasum -a 256 -c -
+          tar -xzf "$download/$lame_archive" -C "$download"
+          (
+            cd "$download/lame-${LAME_VERSION}"
+            ./configure --prefix="$prefix" --disable-shared --enable-static --disable-frontend CFLAGS="-arch arm64 -mmacosx-version-min=13.0"
+            make -j"$(sysctl -n hw.ncpu)"
+            make install
+          )
+
+          git clone --branch "n${FFMPEG_VERSION}" --depth 1 https://github.com/FFmpeg/FFmpeg.git "$download/ffmpeg-${FFMPEG_VERSION}"
+          test "$(git -C "$download/ffmpeg-${FFMPEG_VERSION}" rev-parse HEAD)" = "$FFMPEG_COMMIT"
+          (
+            cd "$download/ffmpeg-${FFMPEG_VERSION}"
+            export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
+            ./configure \
+              --prefix="$prefix" \
+              --arch=arm64 \
+              --target-os=darwin \
+              --cc=clang \
+              --extra-cflags="-arch arm64 -mmacosx-version-min=13.0 -I$prefix/include" \
+              --extra-ldflags="-arch arm64 -mmacosx-version-min=13.0 -L$prefix/lib" \
+              --pkg-config-flags=--static \
+              --disable-autodetect \
+              --enable-static \
+              --disable-shared \
+              --enable-gpl \
+              --enable-libmp3lame \
+              --disable-doc \
+              --disable-debug \
+              --disable-ffplay \
+              --disable-ffprobe
+            make -j"$(sysctl -n hw.ncpu)"
+            make install
+          )
+
+          bash distribution/build-macos-arm64.sh \
+            --node-bin "$download/node-v${NODE_VERSION}-darwin-arm64/bin/node" \
+            --ffmpeg "$prefix/bin/ffmpeg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: |
+            dist/Classmate-Lilith-macOS-arm64.zip
+            dist/Classmate-Lilith-macOS-arm64.sha256
+          if-no-files-found: error
+
+      - name: Append macOS assets to existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq 'if .isDraft then error("Expected published release") else true end'
+          gh release upload "$TAG" dist/Classmate-Lilith-macOS-arm64.zip dist/Classmate-Lilith-macOS-arm64.sha256 --repo "$GITHUB_REPOSITORY"
+
