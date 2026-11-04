@@ -80,6 +80,7 @@ export class SettingsStore {
   constructor({ file, legacyFile }) {
     this.file = file;
     this.legacyFile = legacyFile;
+    this.pending = Promise.resolve();
   }
 
   async initialize() {
@@ -116,6 +117,16 @@ export class SettingsStore {
   }
 
   async save(update) {
+    return this.serialize(() => this.saveActive(update));
+  }
+
+  serialize(operation) {
+    const next = this.pending.catch(() => {}).then(operation);
+    this.pending = next;
+    return next;
+  }
+
+  async saveActive(update) {
     await validateEndpointUpdate(update);
     const settings = await this.load();
     for (const key of Object.keys(DEFAULTS)) {
@@ -131,6 +142,10 @@ export class SettingsStore {
   }
 
   async clearProvider(provider) {
+    return this.serialize(() => this.clearProviderActive(provider));
+  }
+
+  async clearProviderActive(provider) {
     const keys = {
       deepseek: ["deepseekApiKey"],
       tencent: ["tencentAppId", "tencentSecretId", "tencentSecretKey"],

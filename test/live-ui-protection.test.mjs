@@ -65,7 +65,7 @@ test("recovery UI restores audio and text without recognition, saves their assoc
   const context=vm.createContext({liveProtection,liveCompletion,crypto:webcrypto,Blob,URLSearchParams,location:{search:""},confirm:()=>true,
     document:{querySelector(selector){if(!elements.has(selector))elements.set(selector,element());return elements.get(selector)},querySelectorAll(){return[]},createElement:element},
     fetch:()=>new Promise(()=>{}),reportUpdateActivity:()=>({flush:async()=>{}}),setTimeout:()=>0,clearTimeout(){},addEventListener(){},
-    createLiveBackup(){const backup={checkpoints:0,stopped:false,attach(){},checkpoint(){this.checkpoints++},flush:async()=>true,complete:async()=>true,stop(){this.stopped=true}};backups.push(backup);return backup;}});
+    createLiveBackup(){const backup={checkpoints:0,archives:0,stopped:false,attach(){},checkpoint(){this.checkpoints++},flush:async()=>true,async complete(){this.archives++;return true},stop(){this.stopped=true}};backups.push(backup);return backup;}});
   context.window=context;vm.runInContext(source,context);vm.runInContext('configuredForLive=()=>false',context);
   const id="live-00000000-0000-0000-0000-000000000000";
   let record={id,extension:"webm",bytes:123,persistedChunks:2,topic:"恢复主题",keywords:"示例术语",provider:"alibaba",model:"qwen3-asr-flash-realtime",language:"zh",text:"恢复的文稿",segments:[],durationMs:1234};
@@ -89,6 +89,10 @@ test("recovery UI restores audio and text without recognition, saves their assoc
   elements.get("#liveTranscript").value="保存后的修改";elements.get("#liveTranscript").oninput();
   assert.equal(backups[0].checkpoints,1);assert.equal(vm.runInContext('protection().dirty',context),true);
   // A failed replacement must not stop the current recovery writer or erase text.
+  const beforeArchives=backups[0].archives,originalFetch=context.fetch;
+  context.fetch=async(url,options)=>{if(url.startsWith('/api/tasks/'))vm.runInContext('liveRevision++',context);return originalFetch(url,options)};
+  await vm.runInContext('createHistoryTask()',context);
+  assert.equal(backups[0].archives,beforeArchives,'edits during saving must not archive their recovery point');
   context.fetch=async()=>({ok:false,json:async()=>({error:"read failed"})});
   await vm.runInContext('restoreRecording(recordingId)',context);
   assert.equal(backups[0].stopped,false);assert.equal(elements.get("#liveTranscript").value,"保存后的修改");

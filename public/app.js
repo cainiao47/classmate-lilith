@@ -366,14 +366,17 @@ function acceptTranscription(){
 }
 
 function currentVersionStage(){if(state.proseText)return"书面稿";if(state.workingText)return"校订稿";if(el.sourceText.value.trim())return"人工修订稿";if(state.transcriptionDraft)return"原始转写稿";return"任务设置"}
-async function saveManualVersion(){const stage=currentVersionStage(),suggested=`${stage} · ${new Date().toLocaleString()}`,label=await requestName({title:"保存工程版本",description:"保存当前工程的完整工作状态，包括录音关联、转写稿、人工修改、校订进度、书面稿、语境和术语。API Key 不会写入版本。",value:suggested,confirmText:"保存版本"});if(label===null)return;const value=label.trim();if(!value)return toast("版本名称不能为空","error");try{await saveTask()}catch{return toast("当前工程保存失败，未创建版本，请检查运行日志后重试","error")}const snapshot={...taskData(),versionStage:stage,versionLabel:value};const r=await fetch(`/api/tasks/${state.taskId}/versions`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(snapshot)}),p=await r.json();if(!r.ok)return toast(p.error||"版本保存失败","error");toast(`已保存工程版本“${value}”`);if(el.historyDrawer.classList.contains("open"))refreshVersions()}
+async function saveManualVersion(){const owner=state.taskId;const stage=currentVersionStage(),suggested=`${stage} · ${new Date().toLocaleString()}`,label=await requestName({title:"保存工程版本",description:"保存当前工程的完整工作状态，包括录音关联、转写稿、人工修改、校订进度、书面稿、语境和术语。API Key 不会写入版本。",value:suggested,confirmText:"保存版本"});if(label===null||state.taskId!==owner)return;const value=label.trim();if(!value)return toast("版本名称不能为空","error");const snapshot={...taskData(),versionStage:stage,versionLabel:value};try{await saveTask()}catch{return toast("当前工程保存失败，未创建版本，请检查运行日志后重试","error")}const r=await fetch(`/api/tasks/${owner}/versions`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(snapshot)}),p=await r.json();if(!r.ok)return toast(p.error||"版本保存失败","error");toast(`已保存工程版本“${value}”`);if(state.taskId===owner&&el.historyDrawer.classList.contains("open"))refreshVersions()}
 async function renameVersion(version){const label=await requestName({title:"重命名保存版本",description:"只修改这个版本的显示名称，不会改变版本内容或当前工程。",value:version.label||version.stage,confirmText:"保存名称"});if(label===null)return;const value=label.trim();if(!value)return toast("版本名称不能为空","error");const r=await fetch(`/api/tasks/${state.taskId}/versions/${version.id}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:value})}),p=await r.json().catch(()=>({}));if(!r.ok)return toast(p.error||"版本重命名失败","error");toast("版本名称已更新");refreshVersions()}
 async function deleteVersion(version){if(!confirm(`删除版本“${version.label||version.stage}”？只会删除这个快照，不影响当前工程和录音。`))return;const r=await fetch(`/api/tasks/${state.taskId}/versions/${version.id}`,{method:"DELETE"}),p=await r.json().catch(()=>({}));if(!r.ok)return toast(p.error||"版本删除失败","error");toast("保存版本已删除");refreshVersions()}
 function itemActionMenu(actions){const details=document.createElement("details"),summary=document.createElement("summary"),panel=document.createElement("div");details.className="item-action-menu";summary.textContent="⋯";summary.title="更多操作";summary.setAttribute("aria-label","更多操作");summary.onclick=e=>e.stopPropagation();panel.className="item-action-panel";for(const action of actions){const button=document.createElement("button");button.type="button";button.textContent=action.label;if(action.danger)button.className="danger";button.onclick=e=>{e.stopPropagation();details.open=false;action.run()};panel.append(button)}details.onclick=e=>e.stopPropagation();details.append(summary,panel);return details}
+let versionsRequest=0;
 async function refreshVersions(){
+  const owner=state.taskId,request=++versionsRequest;
   const list=$("#versionList");list.replaceChildren();
   try{
-    const r=await fetch(`/api/tasks/${state.taskId}/versions`),p=await r.json();
+    const r=await fetch(`/api/tasks/${owner}/versions`),p=await r.json();
+    if(request!==versionsRequest||state.taskId!==owner)return;
     if(!r.ok)throw Error(p.error||"版本列表读取失败");
     if(!p.versions?.length){const empty=document.createElement("div");empty.className="nothing";empty.textContent="还没有保存的工程版本。";return list.append(empty)}
     for(const version of p.versions){
@@ -384,7 +387,7 @@ async function refreshVersions(){
       restore.type="button";restore.className="secondary-button version-restore";restore.textContent="恢复此版本";restore.setAttribute("aria-label",`恢复版本：${version.label||version.stage||"未命名版本"}`);restore.onclick=()=>restoreVersion(version.id);
       item.append(head,meta,restore);list.append(item);
     }
-  }catch(error){const empty=document.createElement("div");empty.className="nothing";empty.textContent=error.message||"版本列表读取失败。";list.append(empty)}
+  }catch(error){if(request!==versionsRequest||state.taskId!==owner)return;const empty=document.createElement("div");empty.className="nothing";empty.textContent=error.message||"版本列表读取失败。";list.append(empty)}
 }
 function applyTaskToWorkspace(task,{save=false,message="已恢复任务与校对进度"}={}){
   state=restoreTaskState(task);activeReviewIndex=-1;activeAudio=null;

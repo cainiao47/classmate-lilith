@@ -15,9 +15,10 @@ extension AppDelegate: SPUUpdaterDelegate {
             guard let self else { return }
             self.quitCheckInProgress = false
             guard ready else { return } // Keep the installer pending until the next safe quit.
-            self.pendingUpdateInstall = nil
             self.quitCheckInProgress = true
-            self.shutdownService { self.updateRelaunchApproved = true; installHandler() }
+            self.shutdownService(forUpdate: true) { stopped in
+                if stopped { self.pendingUpdateInstall = nil; self.updateRelaunchApproved = true; installHandler() }
+            }
         }
         return true
     }
@@ -87,12 +88,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
                 return
             }
             if let install = self.pendingUpdateInstall {
-                self.pendingUpdateInstall = nil
                 self.terminationReplyPending = false
                 sender.reply(toApplicationShouldTerminate: false)
-                self.shutdownService { self.updateRelaunchApproved = true; install() }
+                self.shutdownService(forUpdate: true) { stopped in
+                    if stopped { self.pendingUpdateInstall = nil; self.updateRelaunchApproved = true; install() }
+                }
             } else {
-                self.shutdownService { self.finishQuit() }
+                self.shutdownService { _ in self.finishQuit() }
             }
         }
         }
@@ -497,30 +499,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         NSApp.terminate(nil)
     }
 
-    private func shutdownService(completion: @escaping () -> Void) {
+    private func shutdownService(forUpdate: Bool = false, completion: @escaping (Bool) -> Void) {
         isQuitting = true
         startupTimer?.invalidate()
         var request = URLRequest(url: workspaceURL.appendingPathComponent("api/shutdown"))
         request.httpMethod = "POST"
         request.setValue(launchToken, forHTTPHeaderField: "X-Launcher-Token")
         var completed = false
-        let finish = { [weak self] in
+        let finish: (Bool) -> Void = { [weak self] stopped in
             guard !completed else { return }; completed = true
+            if forUpdate && !stopped {
+                self?.isQuitting = false
+                self?.quitCheckInProgress = false
+                self?.webView.evaluateJavaScript("window.classmateCancelExit && window.classmateCancelExit()", completionHandler: nil)
+                let alert = NSAlert()
+                alert.messageText = "暂未安装更新"
+                alert.informativeText = "无法确认本机服务已停止，已保留当前程序。请返回工作台稍后重试退出。"
+                alert.runModal()
+                completion(false)
+                return
+            }
             if let process = self?.serverProcess, process.isRunning { process.terminate() }
-            completion()
+            completion(stopped)
         }
-        session().dataTask(with: request) { [weak self] _, _, _ in
-            DispatchQueue.main.async { self?.waitForServerToStop(completion: finish) }
+        session().dataTask(with: request) { [weak self] _, response, _ in
+            let acknowledged = (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async {
+                if acknowledged { self?.waitForServerToStop { finish(true) } }
+                else { finish(false) }
+            }
         }.resume()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.6) { finish() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.6) { finish(false) }
     }
 
     private func waitForServerToStop(attempt: Int = 0, completion: @escaping () -> Void) {
         checkServiceHealth { [weak self] healthy in
             guard let self else { return }
-            if !healthy || attempt >= 25 {
+            if !healthy {
                 completion()
-            } else {
+            } else if attempt < 25 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.waitForServerToStop(attempt: attempt + 1, completion: completion) }
             }
         }
@@ -588,6 +605,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         panel.beginSheetModal(for: mainWindow) { response in
             completionHandler(response == .OK ? panel.urls : nil)
         }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Classmate Lilith"
+        alert.informativeText = message
+        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: "继续")
+        alert.beginSheetModal(for: mainWindow) { result in completionHandler(result == .alertSecondButtonReturn) }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Classmate Lilith"
+        alert.informativeText = message
+        alert.addButton(withTitle: "确定")
+        alert.beginSheetModal(for: mainWindow) { _ in completionHandler() }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Classmate Lilith"
+        alert.informativeText = prompt
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        input.stringValue = defaultText ?? ""
+        alert.accessoryView = input
+        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: "确定")
+        alert.beginSheetModal(for: mainWindow) { result in completionHandler(result == .alertSecondButtonReturn ? input.stringValue : nil) }
     }
 
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {

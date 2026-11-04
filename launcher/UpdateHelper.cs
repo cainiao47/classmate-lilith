@@ -34,16 +34,16 @@ namespace ClassmateLilithUpdate
                 CopyTree(folder, Path.Combine(to, Path.GetFileName(folder)));
             }
         }
-        private static bool Healthy(string version)
+        private static bool Healthy(string version, string appRoot)
         {
             try
             {
-                var request = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:4178/api/health");
+                var request = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:4178/api/health?root=" + Uri.EscapeDataString(Path.GetFullPath(appRoot)));
                 request.Proxy = null; request.Timeout = 800;
                 using (var response = request.GetResponse()) using (var reader = new StreamReader(response.GetResponseStream()))
                 {
                     string body = reader.ReadToEnd();
-                    return body.Contains("\"app\":\"classmate-lilith\"") && body.Contains("\"version\":\"" + version + "\"");
+                    return body.Contains("\"app\":\"classmate-lilith\"") && body.Contains("\"matchesRoot\":true") && body.Contains("\"version\":\"" + version + "\"");
                 }
             }
             catch { return false; }
@@ -91,7 +91,7 @@ namespace ClassmateLilithUpdate
                 }
                 newLauncher = Process.Start(new ProcessStartInfo(Path.Combine(app, "Classmate Lilith.exe")) { UseShellExecute = true });
                 bool healthy = false;
-                for (int attempt = 0; attempt < 30; attempt++) { if (Healthy(args[7])) { healthy = true; break; } Thread.Sleep(500); }
+                for (int attempt = 0; attempt < 30; attempt++) { if (Healthy(args[7], app)) { healthy = true; break; } Thread.Sleep(500); }
                 if (!healthy) throw new Exception("新版安装后未能正常启动，将恢复先前程序文件。");
                 File.AppendAllText(log, DateTime.Now.ToString("s") + " 更新安装及启动验证完成。" + Environment.NewLine);
                 return 0;

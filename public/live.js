@@ -630,12 +630,15 @@ async function createHistoryTask() {
   const wasSaved = Boolean(savedTaskId);
   savedTaskId = id;
   liveSavedRevision = revision;
-  if (backup) {
+  if (backup && liveRevision === revision) {
     try {
       if (!await backup.complete(id)) elements.saveState.textContent = "工程已保存，录音恢复点归档未完成，仍保留在本机。";
       else $("#liveBackupStatus").textContent = "已保存为工程，恢复点已归档（原分段仍保留在本机）。";
     } catch { $("#liveBackupStatus").textContent = "工程已保存，恢复点尚未归档；原分段仍保留，可稍后重试。"; }
   }
+  // Edits during history saving or archive acknowledgement must retain an
+  // unarchived recovery point; only the captured revision was saved as a task.
+  if (backup && liveRevision !== revision) { backup.checkpoint(); await backup.flush(); }
   await updateLease.flush();
   elements.saveState.textContent = wasSaved
     ? "已更新历史任务；录音仍与此任务关联。"
