@@ -23,11 +23,11 @@ Classmate Lilith 在用户自己的电脑上运行，完整工作流为：在线
 | --- | --- | --- |
 | Windows 10/11 x64 安装版 | [v0.24.0 安装包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.24.0/Classmate-Lilith-Setup-0.24.0.exe) | 安装向导、旧版数据导入、应用内检查与安装更新 |
 | Windows 10/11 x64 便携版 | [v0.24.0 便携包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.24.0/Classmate-Lilith-Windows-x64.zip) | 解压后双击 `Classmate Lilith.exe`，无需安装 |
-| macOS 13+ Apple Silicon | [v0.21.1 下载页](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.21.1) | 本轮保留 GitHub 现有版本，首次启动需手动放行 |
+| macOS 13+ Apple Silicon | [v0.24.0 Mac 包](https://github.com/cainiao47/classmate-lilith/releases/download/v0.24.0/Classmate-Lilith-macOS-arm64.zip) | 独立应用窗口；本轮按要求仅构建发布，未运行测试 |
 
 Windows 安装与覆盖升级详见 [Windows 安装说明](docs/WINDOWS_INSTALL.md)。安装版将用户数据独立保存，升级保留数据；卸载时显示数据路径，可手动选择保留或经二次确认后删除。首次安装可以从旧便携版复制并校验数据。
 
-当前 Windows 正式版为 **[v0.24.0](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.24.0)**（2026-11-04），新增一体化顶栏、轻量侧栏和四阶段工作区，完善中断恢复、长文复核、阅读预览及复制导出反馈，并提供 EXE 安装器、便携包与签名更新清单。macOS 下载仍为 **v0.21.1**，本轮不重新构建。详见 [发布说明](docs/RELEASE_0.24.0.md) 与 [版本核对记录](docs/VERSION_AUDIT.md)。
+当前版本为 **[v0.24.0](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.24.0)**（2026-11-04）。Windows 新增一体化顶栏、轻量侧栏，并提供 EXE 安装器、便携包与签名更新清单。macOS Apple Silicon 包也已从同一版本源码重新构建，保留 Mac 原生窗口，包含四阶段工作区、中断恢复、长文复核、阅读预览及复制导出改进；本轮按用户要求仅构建发布，未执行测试或真机交互验证。详见 [发布说明](docs/RELEASE_0.24.0.md) 与 [版本核对记录](docs/VERSION_AUDIT.md)。
 
 macOS 版目前未使用 Apple 开发者证书签名，也未公证。第一次运行时请按 [macOS 安装说明](docs/MACOS_INSTALL.md) 操作。Intel Mac 暂未提供预编译包。
 

@@ -1,6 +1,12 @@
-# Classmate Lilith v0.24.0（Windows）
+# Classmate Lilith v0.24.0（Windows / macOS）
 
-本次更新 Windows 窗口和工作区交互。macOS 继续使用 [v0.21.1](https://github.com/cainiao47/classmate-lilith/releases/tag/v0.21.1)，本轮不构建新 Mac 包。
+本次更新 Windows 窗口和工作区交互，并于 2026-11-04 补充 macOS Apple Silicon 构建。Mac 包来自同一 `v0.24.0` 标签源码，按用户要求仅编译、打包与发布，未运行测试或真机交互验证。现有 Windows 文件保持不变。
+
+## macOS 下载与范围
+
+下载 **Classmate-Lilith-macOS-arm64.zip**，适用于 macOS 13 及以上、Apple Silicon（M 系列芯片）；Intel Mac 不适用。解压后将 `Classmate Lilith.app` 放入“应用程序”。替换旧版前先按 `Command-Q` 或从菜单栏选择“退出并停止服务”；已有数据仍位于 `~/Library/Application Support/Classmate Lilith/data`，替换应用不自动删除这些数据。
+
+Mac 采用现有独立原生窗口，包含共用的四阶段工作区、复核和成稿改进；Windows 一体化顶栏与轻量侧栏属于 Windows 原生适配。Mac 包使用临时签名，未经过 Apple Developer ID 签名或公证；首次打开方式见 [macOS 安装说明](MACOS_INSTALL.md)。随包提供 ZIP 的 SHA-256 文件，构建完成不代表已经验证实际使用体验。
 
 ## 本次更新
 
@@ -20,10 +26,10 @@
 
 需要 Windows 10/11 x64、.NET Framework 4.7.2 或更新版本及 WebView2 Runtime。更新清单使用既有发布密钥签名，安装程序尚无商业 Windows 代码签名。升级和卸载的数据保留方式延续上版。
 
-## 验证范围
+## Windows 验证范围（Mac 本轮不测试）
 
 164 项自动测试及语法检查通过。隔离浏览器验证四阶段导航、导入失败重试、保存失败恢复、中断工程、历史版本确认、长文复核、阅读与编辑切换、空文稿恢复，以及 1280×800 和 940×680 布局。原生探针验证自定义标题栏、圆角缩放、失败回退、退出保存握手和高清显示，数据路径检查覆盖文档默认位置、自定义覆盖及便携模式。
 
 验证使用虚构工程和模拟模型响应，没有操作正式用户数据、调用付费模型或使用真实麦克风。未以真实用户数据进行完整安装升级演练，也未进行 macOS 真机测试和长时间在线录音质量测试。只能恢复成功写入磁盘的录音与文稿部分，恢复后仍需核对。
 
-本轮沿用既有本机会话令牌、Origin/WebSocket 校验和 API 凭据存储方案。发布包不含用户工程、API 设置、日志或发布私钥。资源包括安装器、便携 ZIP、对应 SHA-256 文件和 `windows-update.json` 签名更新清单；Source code 压缩包不是客户端。
+本轮沿用既有本机会话令牌、Origin/WebSocket 校验和 API 凭据存储方案。发布包不含用户工程、API 设置、日志或发布私钥。资源包括 Windows 安装器、Windows 便携 ZIP、macOS Apple Silicon ZIP、对应 SHA-256 文件和 `windows-update.json` Windows 签名更新清单；Source code 压缩包不是客户端。

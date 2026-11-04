@@ -2,6 +2,8 @@
 
 当前 macOS 预览版面向 Apple Silicon（M 系列芯片），采用免费临时签名，不经过 Apple Developer ID 签名或公证。
 
+v0.24.0 已补充 macOS 13+ Apple Silicon 构建，本轮按要求仅编译打包发布，未运行测试或真机交互验证；不适用于 Intel Mac。Windows 的一体化顶栏是 Windows 专用，Mac 继续使用独立原生窗口。
+
 ## 安装
 
 1. 从 GitHub Releases 下载 `Classmate-Lilith-macOS-arm64.zip`，不要下载仓库的 Source code ZIP。
@@ -22,6 +24,8 @@ Apple 通常只在第一次失败启动后的一段时间内显示“仍要打�
 第一次使用实时录音时，macOS 会询问麦克风权限。请选择“允许”；之后可以在“系统设置”>“隐私与安全性”>“麦克风”中修改授权。
 
 ## 数据位置
+
+升级前先按 `Command-Q` 或从菜单栏选择“退出并停止服务”，然后用新版 `.app` 替换旧应用。建议事先备份下列目录；本版没有 Mac 自动更新安装器。
 
 - 设置、API Key、历史任务和录音：`~/Library/Application Support/Classmate Lilith/data`
 - 日志：`~/Library/Logs/Classmate Lilith`
