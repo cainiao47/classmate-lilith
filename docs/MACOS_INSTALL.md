@@ -2,11 +2,11 @@
 
 当前 macOS 预览版面向 Apple Silicon（M 系列芯片），采用免费临时签名，不经过 Apple Developer ID 签名或公证。
 
-v0.3.0 提供 macOS 13+ Apple Silicon 的 DMG 和 ZIP，并加入退出保存保护与 Sparkle 更新组件。本轮按要求仅编译打包发布，未运行 Mac 交互测试；不适用于 Intel Mac。Mac 继续使用独立原生窗口。
+v0.30.0 提供 macOS 13+ Apple Silicon 的 DMG 和 ZIP，并加入退出保存保护与 Sparkle 更新组件。本轮按要求仅编译打包发布，未运行 Mac 交互测试；不适用于 Intel Mac。Mac 继续使用独立原生窗口。
 
 ## 安装
 
-推荐下载 DMG，打开后将 `Classmate Lilith.app` 拖入“应用程序”；也可继续使用下方 ZIP 安装方式。0.24.x 旧客户端此次需手动安装 0.3.0，此后才有应用内检查更新功能。
+推荐下载 DMG，打开后将 `Classmate Lilith.app` 拖入“应用程序”；也可继续使用下方 ZIP 安装方式。Mac 0.24.x 旧客户端首次需手动安装本版，此后才有应用内检查更新功能。
 
 1. 从 GitHub Releases 下载 `Classmate-Lilith-macOS-arm64.zip`，不要下载仓库的 Source code ZIP。
 2. 双击 ZIP 解压，得到 `Classmate Lilith.app`。
@@ -27,7 +27,7 @@ Apple 通常只在第一次失败启动后的一段时间内显示“仍要打�
 
 ## 数据位置
 
-手动升级前先按 `Command-Q` 或从菜单栏选择“退出并停止服务”，然后用新版 `.app` 替换旧应用。建议事先备份下列目录。安装 0.3.0 后可从应用菜单检查更新，自动检查采用 Sparkle，更新归档须通过 Ed25519 签名；安装前要求保存并停止本机服务，不强制丢弃活动录音或未保存内容。
+手动升级前先按 `Command-Q` 或从菜单栏选择“退出并停止服务”，然后用新版 `.app` 替换旧应用。建议事先备份下列目录。安装 0.30.0 后可从应用菜单检查更新，自动检查采用 Sparkle，更新归档须通过 Ed25519 签名；安装前要求保存并停止本机服务，不强制丢弃活动录音或未保存内容。
 
 - 设置、API Key、历史任务和录音：`~/Library/Application Support/Classmate Lilith/data`
 - 日志：`~/Library/Logs/Classmate Lilith`

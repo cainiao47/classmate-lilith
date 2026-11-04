@@ -1,5 +1,5 @@
 Classmate Lilith
-Version: 0.3.0
+Version: 0.30.0
 Release channel: Windows and macOS Apple Silicon
 Mode: Online transcription only
 

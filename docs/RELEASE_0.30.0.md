@@ -1,12 +1,12 @@
-# Classmate Lilith v0.3.0（Windows / macOS）
+# Classmate Lilith v0.30.0（Windows / macOS）
 
-本版按新的命名统一发布为 **0.3.0**，包含此前未发布的 v0.25.0 开发线全部功能及维护修复，是 v0.24.0 之后的更新，并非旧版程序。
+本版为 **0.30.0**，包含此前未发布的 v0.25.0 开发线全部功能及维护修复，可从 Windows v0.24.0 检查更新或覆盖升级。
 
 ## 升级须知
 
-旧客户端按数值比较版本，会将 0.3.0 视为低于 0.24.0。因此 **0.24.x 用户本次需要从本发布页手动下载安装，无法依靠旧客户端的检查更新**。以后从 0.3.0 按 0.3.1、0.4.0 等顺序升级。
+Windows 用户可使用检查更新或直接下载安装器覆盖升级，安装版数据保留。旧 Mac 客户端没有更新组件，首次需手动安装本版；此后可以应用内更新。
 
-- Windows：下载 `Classmate-Lilith-Setup-0.3.0.exe`。保存工作，从托盘选择“退出并停止服务”后运行安装器；可以直接覆盖旧安装版，无需先卸载。用户数据仍保留在系统“文档”的 `Classmate Lilith/data`。便携用户可下载完整 Windows ZIP；迁移至安装版时在向导中选择旧目录导入。
+- Windows：下载 `Classmate-Lilith-Setup-0.30.0.exe`。保存工作，从托盘选择“退出并停止服务”后运行安装器；可以直接覆盖旧安装版，无需先卸载。用户数据仍保留在系统“文档”的 `Classmate Lilith/data`。便携用户可下载完整 Windows ZIP；迁移至安装版时在向导中选择旧目录导入。
 - Mac：适用于 macOS 13+、Apple Silicon（M 系列芯片），不适用于 Intel Mac。下载 DMG，把 `Classmate Lilith.app` 拖入“应用程序”；升级前先 Command-Q 或“退出并停止服务”，再替换旧应用。资料继续保存在 `~/Library/Application Support/Classmate Lilith/data`。ZIP 同时保留。
 
 ## 新增与修复
