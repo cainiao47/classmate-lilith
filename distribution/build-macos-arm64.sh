@@ -6,15 +6,17 @@ SOURCE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_ROOT="$SOURCE_ROOT/dist"
 NODE_BIN=""
 FFMPEG_BIN=""
+SPARKLE_ROOT=""
 
 usage() {
-  echo "Usage: $0 --node-bin /path/to/node --ffmpeg /path/to/ffmpeg [--output /path/to/dist]"
+  echo "Usage: $0 --node-bin /path/to/node --ffmpeg /path/to/ffmpeg --sparkle /path/to/Sparkle [--output /path/to/dist]"
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --node-bin) NODE_BIN="$2"; shift 2 ;;
     --ffmpeg) FFMPEG_BIN="$2"; shift 2 ;;
+    --sparkle) SPARKLE_ROOT="$2"; shift 2 ;;
     --output) OUTPUT_ROOT="$2"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 2 ;;
@@ -24,7 +26,8 @@ done
 [[ "$(uname -s)" == "Darwin" ]] || { echo "This package must be built on macOS." >&2; exit 1; }
 [[ -n "$NODE_BIN" && -x "$NODE_BIN" ]] || { echo "--node-bin must point to an executable Apple Silicon Node.js binary." >&2; exit 1; }
 [[ -n "$FFMPEG_BIN" && -x "$FFMPEG_BIN" ]] || { echo "--ffmpeg must point to an executable self-contained Apple Silicon FFmpeg binary." >&2; exit 1; }
-for tool in swiftc sips iconutil codesign ditto plutil lipo otool shasum; do
+[[ -d "$SPARKLE_ROOT/Sparkle.framework" ]] || { echo "--sparkle must point to the verified Sparkle distribution." >&2; exit 1; }
+for tool in swiftc sips iconutil codesign ditto plutil lipo otool shasum hdiutil; do
   command -v "$tool" >/dev/null || { echo "Missing macOS build tool: $tool" >&2; exit 1; }
 done
 
@@ -65,14 +68,18 @@ rm -f "$ARCHIVE" "$OUTPUT_ROOT/Classmate-Lilith-macOS-arm64.sha256"
 mkdir -p "$MACOS_DIR" "$APP_ROOT/runtime/node/bin" "$APP_ROOT/runtime/ffmpeg" "$APP_ROOT/node_modules"
 
 version="$($NODE_BIN -p "require('$SOURCE_ROOT/package.json').version")"
-build_number="$(echo "$version" | tr -cd '0-9')"
+build_number="$version"
 [[ -n "$build_number" ]] || build_number="1"
 
 swiftc "$SOURCE_ROOT/launcher/macos/ClassmateLilithLauncher.swift" \
   -parse-as-library \
   -target arm64-apple-macosx13.0 \
   -framework AppKit -framework Foundation -framework WebKit \
+  -F "$SPARKLE_ROOT" -framework Sparkle \
+  -Xlinker -rpath -Xlinker '@executable_path/../Frameworks' \
   -o "$MACOS_DIR/Classmate Lilith"
+mkdir -p "$CONTENTS/Frameworks"
+ditto "$SPARKLE_ROOT/Sparkle.framework" "$CONTENTS/Frameworks/Sparkle.framework"
 launcher_archs="$(lipo -archs "$MACOS_DIR/Classmate Lilith")"
 [[ " $launcher_archs " == *" arm64 "* ]] || { echo "Launcher does not contain an arm64 slice: $launcher_archs" >&2; exit 1; }
 cp "$SOURCE_ROOT/launcher/macos/Info.plist" "$CONTENTS/Info.plist"
@@ -101,6 +108,7 @@ done
 cp -R "$SOURCE_ROOT/public" "$APP_ROOT/public"
 cp -R "$SOURCE_ROOT/lib" "$APP_ROOT/lib"
 cp -R "$SOURCE_ROOT/node_modules/ws" "$APP_ROOT/node_modules/ws"
+cp "$SPARKLE_ROOT/LICENSE" "$RESOURCES/Sparkle-LICENSE.txt"
 cp "$NODE_BIN" "$APP_ROOT/runtime/node/bin/node"
 cp "$FFMPEG_BIN" "$APP_ROOT/runtime/ffmpeg/ffmpeg"
 chmod 755 "$MACOS_DIR/Classmate Lilith" "$APP_ROOT/runtime/node/bin/node" "$APP_ROOT/runtime/ffmpeg/ffmpeg"
@@ -120,6 +128,14 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ARCHIVE"
 archive_hash="$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')"
 printf '%s  %s\n' "$archive_hash" "$(basename "$ARCHIVE")" > "$OUTPUT_ROOT/Classmate-Lilith-macOS-arm64.sha256"
+
+# A conventional drag-to-Applications installation disk; user data lives outside the app.
+DMG_STAGE="$(mktemp -d "$OUTPUT_ROOT/dmg-stage.XXXXXX")"
+ditto "$APP" "$DMG_STAGE/Classmate Lilith.app"
+ln -s /Applications "$DMG_STAGE/Applications"
+hdiutil create -volname 'Classmate Lilith' -srcfolder "$DMG_STAGE" -ov -format UDZO "$OUTPUT_ROOT/Classmate-Lilith-macOS-arm64.dmg"
+shasum -a 256 "$OUTPUT_ROOT/Classmate-Lilith-macOS-arm64.dmg" | sed 's|  .*/|  |' > "$OUTPUT_ROOT/Classmate-Lilith-macOS-arm64.dmg.sha256"
+case "$DMG_STAGE" in "$OUTPUT_ROOT"/dmg-stage.*) rm -rf "$DMG_STAGE" ;; *) exit 1 ;; esac
 
 echo "Built: $APP"
 echo "Archive: $ARCHIVE"

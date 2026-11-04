@@ -6,7 +6,15 @@ on:
       tag:
         description: Existing release tag to build and append macOS assets
         required: true
-        default: v0.24.0
+        default: v0.25.0
+      source_ref:
+        description: Source branch or tag to compile
+        required: true
+        default: main
+      publish:
+        description: Publish assets and signed update feed (requires signing secret)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -28,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ inputs.source_ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -39,6 +47,8 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           node -e 'const v=require("./package.json").version;if(process.env.TAG!=="v"+v)throw Error("Release tag and source version differ")'
+      - name: Download pinned Sparkle framework
+        run: bash distribution/prepare-sparkle.sh "$RUNNER_TEMP/sparkle"
       - name: Build static Apple Silicon FFmpeg with LAME
         shell: bash
         run: |
@@ -93,20 +103,43 @@ jobs:
 
           bash distribution/build-macos-arm64.sh \
             --node-bin "$download/node-v${NODE_VERSION}-darwin-arm64/bin/node" \
-            --ffmpeg "$prefix/bin/ffmpeg"
+            --ffmpeg "$prefix/bin/ffmpeg" \
+            --sparkle "$RUNNER_TEMP/sparkle"
+      - name: Sign macOS update archive
+        if: inputs.publish
+        env:
+          WINDOWS_UPDATE_PRIVATE_KEY: ${{ secrets.WINDOWS_UPDATE_PRIVATE_KEY }}
+        run: |
+          test -n "$WINDOWS_UPDATE_PRIVATE_KEY" || { echo 'Release signing secret is missing'; exit 1; }
+          node distribution/sign-macos-update.mjs dist
       - uses: actions/upload-artifact@v4
         with:
           name: macos-release
           path: |
             dist/Classmate-Lilith-macOS-arm64.zip
             dist/Classmate-Lilith-macOS-arm64.sha256
+            dist/Classmate-Lilith-macOS-arm64.dmg
+            dist/Classmate-Lilith-macOS-arm64.dmg.sha256
+            dist/macos-appcast.xml
           if-no-files-found: error
 
       - name: Append macOS assets to existing release
+        if: inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
         run: |
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq 'if .isDraft then error("Expected published release") else true end'
-          gh release upload "$TAG" dist/Classmate-Lilith-macOS-arm64.zip dist/Classmate-Lilith-macOS-arm64.sha256 --repo "$GITHUB_REPOSITORY"
+          git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$TAG^{commit}")" || { echo 'Source differs from release tag'; exit 1; }
+          gh release upload "$TAG" dist/Classmate-Lilith-macOS-arm64.zip dist/Classmate-Lilith-macOS-arm64.sha256 dist/Classmate-Lilith-macOS-arm64.dmg dist/Classmate-Lilith-macOS-arm64.dmg.sha256 dist/macos-appcast.xml --repo "$GITHUB_REPOSITORY"
+      - name: Advance update feed after publishing assets
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          feed='distribution/macos-appcast.xml'
+          previous=$(gh api "repos/$GITHUB_REPOSITORY/contents/$feed?ref=main" --jq .sha)
+          node -e 'const fs=require("fs");fs.writeFileSync(process.env.RUNNER_TEMP+"/feed.json",JSON.stringify({message:"Publish signed macOS update feed [skip ci]",branch:"main",sha:process.argv[1],content:fs.readFileSync("dist/macos-appcast.xml").toString("base64")}))' "$previous"
+          gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$feed" --input "$RUNNER_TEMP/feed.json"
 

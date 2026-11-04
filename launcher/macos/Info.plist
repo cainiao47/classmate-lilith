@@ -30,5 +30,15 @@
   <string>Classmate Lilith 需要使用麦克风进行课堂实时转写和本机录音。</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>SUFeedURL</key>
+  <string>https://raw.githubusercontent.com/cainiao47/classmate-lilith/main/distribution/macos-appcast.xml</string>
+  <key>SUPublicEDKey</key>
+  <string>QYHoysw7mTPVBMrC+ez7KFPWZ07u+d/TN38d6TgmVrQ=</string>
+  <key>SUEnableAutomaticChecks</key>
+  <true/>
+  <key>SUAutomaticallyUpdate</key>
+  <false/>
+  <key>SUVerifyUpdateBeforeExtraction</key>
+  <true/>
 </dict>
 </plist>

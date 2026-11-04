@@ -90,6 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash distribution/prepare-sparkle.sh "$RUNNER_TEMP/sparkle"
           download="$RUNNER_TEMP/classmate-downloads"
           prefix="$RUNNER_TEMP/classmate-runtime"
           mkdir -p "$download" "$prefix"
@@ -140,7 +141,8 @@ jobs:
 
           bash distribution/build-macos-arm64.sh \
             --node-bin "$download/node-v${NODE_VERSION}-darwin-arm64/bin/node" \
-            --ffmpeg "$prefix/bin/ffmpeg"
+            --ffmpeg "$prefix/bin/ffmpeg" \
+            --sparkle "$RUNNER_TEMP/sparkle"
       - uses: actions/upload-artifact@v4
         with:
           name: macos-release

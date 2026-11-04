@@ -1,6 +1,6 @@
-Classmate Lilith 0.24.0（Windows）
+Classmate Lilith 0.25.0（开发版，未发布）
 
-版本提示：本版为 Windows v0.24.0，新增一体化顶栏、轻量侧栏与四阶段工作区，并改进中断恢复、长文复核、阅读预览和复制导出反馈。包含此前的录音分段恢复、工程搜索分页和回收站。macOS 下载仍为 v0.21.1，不重新构建。安装版数据保存在系统“文档”。
+版本提示：本目录是 v0.25.0 开发代码，新增复核栏宽拖动及 Mac 退出保护、DMG 和应用内更新。正式下载仍为 GitHub 已发布的 Windows/macOS v0.24.0。Windows 安装版数据保存在系统“文档”，Mac 数据仍在用户 Library 目录。开发构建不等同于正式发布。
 v0.22.2 修复 Windows 高清缩放下的文字模糊，支持按显示器缩放并自动适应窗口尺寸。需要 .NET Framework 4.7.2 或更新版本；不要单独移动或删除 Classmate Lilith.exe.config。无需将 Windows 系统缩放改成 100%。
 
 一、启动

@@ -69,6 +69,12 @@
 .workspace-flow .document-view-controls button[aria-pressed="true"] { background: #795035; border-color: #795035; color: #fff; font-weight: 650; }
 .workspace-flow #correctedText { scroll-margin-top: calc(var(--desktop-header,0px) + 20px); scroll-margin-bottom: calc(var(--flow-footer) + 20px); }
 .document-empty { color: #75624f; padding: 20px 0; }
+.workspace-flow .review-core-grid[data-split-active="true"], .workspace-flow .compare-grid[data-split-active="true"] { grid-template-columns: var(--split-columns); gap: 0; }
+.review-splitter { cursor: col-resize; touch-action: none; align-self: stretch; position: relative; border-radius: 5px; min-height: 48px; }
+.review-splitter::after { content: ''; position: absolute; inset: 12px 5px; background: #c1a383; border-radius: 4px; }
+.review-splitter:hover, .review-splitter:focus-visible { background: #e9d6b9; outline: 2px solid #795035; outline-offset: -2px; }
+.review-splitter[hidden] { display: none; }
+@media (max-width: 800px) { .workspace-flow .review-core-grid .compare-grid { grid-template-columns: 1fr; height: auto; } }
 .workspace-flow .prose-toolbar { flex-wrap: wrap; }
 .workspace-flow .prose-mode { font-size: 14px; }
 .workspace-flow .prose-mode select { font-size: 14px; border-color: #b69b7b; }

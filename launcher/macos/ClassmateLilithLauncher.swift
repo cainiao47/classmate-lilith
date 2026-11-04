@@ -1,6 +1,28 @@
 import AppKit
 import Foundation
 import WebKit
+#if canImport(Sparkle)
+import Sparkle
+#endif
+
+#if canImport(Sparkle)
+extension AppDelegate: SPUUpdaterDelegate {
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        if quitCheckInProgress { return true }
+        quitCheckInProgress = true
+        pendingUpdateInstall = installHandler
+        preparePageForExit(allowForce: false) { [weak self] ready in
+            guard let self else { return }
+            self.quitCheckInProgress = false
+            guard ready else { return } // Keep the installer pending until the next safe quit.
+            self.pendingUpdateInstall = nil
+            self.quitCheckInProgress = true
+            self.shutdownService { self.updateRelaunchApproved = true; installHandler() }
+        }
+        return true
+    }
+}
+#endif
 
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
@@ -21,12 +43,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var healthCheckInFlight = false
     private var isQuitting = false
     private var quitFinished = false
+    private var quitCheckInProgress = false
+    private var terminationReplyPending = false
+    private var updateRelaunchApproved = false
+    private var pendingUpdateInstall: (() -> Void)?
+#if canImport(Sparkle)
+    private var updaterController: SPUStandardUpdaterController?
+#endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         configureApplicationMenu()
         configureMainWindow()
         configureStatusMenu()
+        configureUpdater()
         showMainWindow()
         beginStartup()
     }
@@ -40,6 +70,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if quitFinished || updateRelaunchApproved { return .terminateNow }
+        if quitCheckInProgress { return .terminateCancel }
+        quitCheckInProgress = true
+        terminationReplyPending = true
+        DispatchQueue.main.async {
+        self.preparePageForExit(allowForce: self.pendingUpdateInstall == nil) { [weak self] ready in
+            guard let self else { return }
+            if !ready {
+                self.quitCheckInProgress = false
+                self.terminationReplyPending = false
+                sender.reply(toApplicationShouldTerminate: false)
+                return
+            }
+            if let install = self.pendingUpdateInstall {
+                self.pendingUpdateInstall = nil
+                self.terminationReplyPending = false
+                sender.reply(toApplicationShouldTerminate: false)
+                self.shutdownService { self.updateRelaunchApproved = true; install() }
+            } else {
+                self.shutdownService { self.finishQuit() }
+            }
+        }
+        }
+        return .terminateLater
+    }
+
+    private func preparePageForExit(allowForce: Bool, completion: @escaping (Bool) -> Void) {
+        // Startup/failure panels contain no editable document.
+        if webView == nil || webView.isHidden { completion(true); return }
+        let url = webView.url
+        guard url?.scheme == "http", url?.host == "127.0.0.1", url?.port == 4178 else { completion(false); return }
+        var finished = false
+        func finish(_ status: String) {
+            if finished { return }; finished = true
+            if status == "ready" { completion(true); return }
+            self.webView.evaluateJavaScript("window.classmateCancelExit && window.classmateCancelExit()", completionHandler: nil)
+            self.showMainWindow()
+            let alert = NSAlert()
+            alert.messageText = status == "blocked" ? "请先完成并保存当前工作" : "无法确认页面是否已保存"
+            alert.informativeText = status == "blocked" ? "录音、处理任务或未保存的设置尚未结束。请先结束录音、暂停任务并保存，再退出或安装更新。" : "当前应用将继续运行。强制退出可能丢失尚未保存的内容。"
+            alert.addButton(withTitle: "返回工作台")
+            if allowForce && status != "blocked" { alert.addButton(withTitle: "仍要退出") }
+            completion(alert.runModal() == .alertSecondButtonReturn)
+        }
+        func poll() {
+            if finished { return }
+            self.webView.evaluateJavaScript("window.classmateExitStatus") { value, error in
+                if finished { return }
+                if error != nil { finish("failed"); return }
+                if let status = value as? String, ["ready", "blocked", "failed"].contains(status) { finish(status); return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { poll() }
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { finish("failed") }
+        webView.evaluateJavaScript("typeof window.classmatePrepareExit === 'function' ? (window.classmatePrepareExit(), true) : false") { value, error in
+            if error != nil || (value as? Bool) != true { finish("failed") } else { poll() }
+        }
+    }
+
+    private func configureUpdater() {
+#if canImport(Sparkle)
+        let controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
+        updaterController = controller
+        let item = NSMenuItem(title: "检查更新…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
+        item.target = controller
+        NSApp.mainMenu?.items.first?.submenu?.insertItem(item, at: 1)
+#endif
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -394,24 +494,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
 
     @objc private func stopAndQuit() {
+        NSApp.terminate(nil)
+    }
+
+    private func shutdownService(completion: @escaping () -> Void) {
         isQuitting = true
         startupTimer?.invalidate()
         var request = URLRequest(url: workspaceURL.appendingPathComponent("api/shutdown"))
         request.httpMethod = "POST"
         request.setValue(launchToken, forHTTPHeaderField: "X-Launcher-Token")
+        var completed = false
+        let finish = { [weak self] in
+            guard !completed else { return }; completed = true
+            if let process = self?.serverProcess, process.isRunning { process.terminate() }
+            completion()
+        }
         session().dataTask(with: request) { [weak self] _, _, _ in
-            DispatchQueue.main.async { self?.waitForServerToStop() }
+            DispatchQueue.main.async { self?.waitForServerToStop(completion: finish) }
         }.resume()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.6) { [weak self] in self?.finishQuit() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.6) { finish() }
     }
 
-    private func waitForServerToStop(attempt: Int = 0) {
+    private func waitForServerToStop(attempt: Int = 0, completion: @escaping () -> Void) {
         checkServiceHealth { [weak self] healthy in
             guard let self else { return }
             if !healthy || attempt >= 25 {
-                self.finishQuit()
+                completion()
             } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.waitForServerToStop(attempt: attempt + 1) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.waitForServerToStop(attempt: attempt + 1, completion: completion) }
             }
         }
     }
@@ -420,7 +530,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if quitFinished { return }
         quitFinished = true
         if let process = serverProcess, process.isRunning { process.terminate() }
-        NSApp.terminate(nil)
+        if terminationReplyPending {
+            terminationReplyPending = false
+            NSApp.reply(toApplicationShouldTerminate: true)
+        } else { NSApp.terminate(nil) }
     }
 
     private func isTrustedLocalURL(_ url: URL) -> Bool {

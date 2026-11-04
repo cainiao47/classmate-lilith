@@ -1,6 +1,6 @@
 Classmate Lilith
-Version: 0.24.0
-Release channel: Windows; macOS download remains v0.21.1
+Version: 0.25.0
+Release channel: Development build; current public release is v0.24.0
 Mode: Online transcription only
 
 Transcription providers:
