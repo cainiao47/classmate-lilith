@@ -31,6 +31,14 @@ test('late version-list responses cannot populate a different project',async()=>
   resolveOld({ok:true,json:async()=>({versions:[]})});await pending;
   assert.equal(list.children.length,1);assert.equal(list.children[0].textContent,'new task list');
 });
+test('manual version saving retains its original project and deep snapshot across an asynchronous save',async()=>{
+  const source=await fs.readFile(new URL('../public/app.js',import.meta.url),'utf8');const fn=source.split(/\r?\n/).find(x=>x.startsWith('async function saveManualVersion()'));
+  let releaseSave;const writes=[],chunks=['original'];
+  const context=vm.createContext({state:{taskId:'task-before'},currentVersionStage:()=> '校订稿',requestName:async()=> 'example',taskData:()=>({correctedChunks:chunks}),clone:x=>JSON.parse(JSON.stringify(x)),saveTask:()=>new Promise(resolve=>{releaseSave=resolve}),fetch:async(url,options)=>{writes.push({url,body:JSON.parse(options.body)});return{ok:true,json:async()=>({})}},toast(){},el:{historyDrawer:{classList:{contains:()=>false}}}});
+  vm.runInContext(fn,context);const pending=vm.runInContext('saveManualVersion()',context);await new Promise(resolve=>setImmediate(resolve));
+  chunks[0]='later';context.state.taskId='task-after';releaseSave();await pending;
+  assert.equal(writes[0].url,'/api/tasks/task-before/versions');assert.equal(writes[0].body.correctedChunks[0],'original');
+});
 test('concurrent terminology additions survive and corrupt libraries are never silently overwritten',async t=>{
   const file=path.join(await folder(t),'terms.json'),store=new TerminologyStore({file});await store.initialize();
   await Promise.all([store.upsertTerm({canonical:'甲'}),store.upsertTerm({canonical:'乙'})]);

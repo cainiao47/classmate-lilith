@@ -24,3 +24,10 @@
 Mac 延续用户要求，只编译并打包，不做真机交互测试。真实升级替换、系统弹窗、长时间实录/断电恢复仍需后续实际环境验证；不使用用户正式数据做安装演练。不重新设计会话令牌、Origin/WebSocket 鉴权及 API 凭据存储方案。未发布新版或推进正式更新订阅。
 
 Mac 网页弹窗按 [Apple WKUIDelegate 接口](https://developer.apple.com/documentation/webkit/wkuidelegate/webview(_:runjavascriptconfirmpanelwithmessage:initiatedbyframe:completionhandler:))接入。
+
+## 本轮结果
+
+- 完整自动回归 174 项全部通过，包含新增维护检查；共用服务与前端语法检查通过。
+- Windows 启动器及更新助手编译成功；原生探针通过标题栏/圆角、退出保存握手、175% 高清显示和多比例布局检查，文档默认数据路径、自定义路径及便携模式检查通过。保留现有用户安装，不在真实资料上演练覆盖安装。
+- Mac 原生 Swift 和 Sparkle 集成编译成功，ZIP、DMG 及校验文件生成成功；工作流未运行 Mac 交互测试、未发布或推进正式更新订阅。[构建记录](https://github.com/cainiao47/classmate-lilith/actions/runs/41787772171)。
+- Windows 开发便携目录为 `dist/maintenance-0.25.0/Classmate-Lilith-Windows-x64`。正式 Release 仍为 v0.24.0，下一版发布说明保持草稿状态。
